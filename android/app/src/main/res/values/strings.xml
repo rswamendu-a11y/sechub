@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">ShubApp</string>
+    <string name="title_activity_main">ShubApp</string>
+    <string name="package_name">com.shubapp</string>
+    <string name="custom_url_scheme">com.shubapp</string>
+</resources>
