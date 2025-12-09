@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
-import { UploadCloud, FileText, Image, Eye, Trash2, X } from 'lucide-react';
+import { UploadCloud, FileText, Image, ExternalLink, Trash2 } from 'lucide-react';
 
 const Locker = () => {
   const [files, setFiles] = useState([]);
-  const [viewFile, setViewFile] = useState(null); // { type, data, name }
 
   useEffect(() => {
     loadFiles();
@@ -13,18 +12,15 @@ const Locker = () => {
 
   const loadFiles = async () => {
     try {
-      // Create dir if not exists (safeguard)
       try {
         await Filesystem.mkdir({ path: 'locker', directory: Directory.Data, recursive: true });
-      } catch (e) {} // ignore if exists
+      } catch (e) {}
 
       const res = await Filesystem.readdir({
         path: 'locker',
         directory: Directory.Data,
       });
 
-      // Map file info (Capacitor readdir returns just names usually, or Stat info)
-      // We will store metadata in a separate JSON or just infer from extension
       const fileList = res.files.map(f => ({
          name: f.name,
          type: f.name.endsWith('.pdf') ? 'pdf' : 'image',
@@ -43,7 +39,6 @@ const Locker = () => {
     const reader = new FileReader();
     reader.onload = async (event) => {
        const base64Raw = event.target.result;
-       // Remove data:image/png;base64, prefix for Capacitor Write
        const base64Data = base64Raw.split(',')[1];
 
        try {
@@ -51,35 +46,41 @@ const Locker = () => {
                path: 'locker/' + file.name,
                data: base64Data,
                directory: Directory.Data,
-               // encoding: Encoding.UTF8 // Only for text, binaries don't need this if base64 string provided
            });
-           alert("Uploaded!");
+           alert("Uploaded successfully!");
            loadFiles();
        } catch (err) {
            console.error(err);
-           alert("Upload Failed");
+           alert("Upload Failed: " + err.message);
        }
     };
     reader.readAsDataURL(file);
   };
 
-  const viewFileAction = async (file) => {
+  const openFileAction = async (file) => {
       try {
-          const content = await Filesystem.readFile({
+          // Get the URI of the file
+          const uriResult = await Filesystem.getUri({
               path: file.path,
               directory: Directory.Data
           });
-          // Content.data is the base64 string
-          const mime = file.type === 'pdf' ? 'application/pdf' : 'image/jpeg'; // naive mime
-          const dataUrl = `data:${mime};base64,${content.data}`;
-          setViewFile({ ...file, data: dataUrl });
+
+          // Use Capacitor Share to open/share the file
+          // This delegates the "Viewing" to the System (PDF Viewer, Gallery, etc.)
+          await Share.share({
+              title: file.name,
+              text: `Viewing ${file.name}`,
+              url: uriResult.uri,
+              dialogTitle: 'Open with...'
+          });
       } catch (e) {
-          alert("Error reading file");
+          console.error(e);
+          alert("Error opening file: " + e.message);
       }
   };
 
   const deleteFile = async (file) => {
-      if(!confirm("Delete this file?")) return;
+      if(!confirm("Delete this file permanently?")) return;
       try {
           await Filesystem.deleteFile({
               path: file.path,
@@ -116,28 +117,16 @@ const Locker = () => {
                         <div className="truncate font-bold text-sm dark:text-white w-40">{f.name}</div>
                    </div>
                    <div className="flex gap-2">
-                       <button onClick={() => viewFileAction(f)} className="p-2 text-indigo-500 hover:bg-indigo-50 rounded"><Eye size={18}/></button>
-                       <button onClick={() => deleteFile(f)} className="p-2 text-red-500 hover:bg-red-50 rounded"><Trash2 size={18}/></button>
+                       <button onClick={() => openFileAction(f)} className="px-3 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-lg flex items-center gap-2 text-xs font-bold">
+                           <ExternalLink size={16}/> Open
+                       </button>
+                       <button onClick={() => deleteFile(f)} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"><Trash2 size={18}/></button>
                    </div>
                </div>
            ))}
-       </div>
 
-       {/* Modal Viewer */}
-       {viewFile && (
-           <div className="fixed inset-0 z-[60] bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-4">
-                <div className="bg-white dark:bg-slate-800 w-full max-w-4xl h-[80vh] rounded-2xl shadow-2xl flex flex-col relative">
-                     <button onClick={() => setViewFile(null)} className="absolute top-4 right-4 z-10 bg-black/50 text-white p-2 rounded-full hover:bg-black/70"><X size={20}/></button>
-                     <div className="flex-1 w-full h-full p-2 bg-slate-100 dark:bg-slate-900 rounded-2xl overflow-auto flex items-center justify-center">
-                         {viewFile.type === 'pdf' ? (
-                             <iframe src={viewFile.data} className="w-full h-full rounded" title="PDF Viewer"></iframe>
-                         ) : (
-                             <img src={viewFile.data} alt="View" className="max-w-full max-h-full rounded shadow-lg" />
-                         )}
-                     </div>
-                </div>
-           </div>
-       )}
+           {files.length === 0 && <div className="text-center text-slate-400 text-sm mt-4">No files stored.</div>}
+       </div>
     </div>
   );
 };

@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { PlusCircle, ShoppingCart, Trash2, Calendar, Database } from 'lucide-react';
+import { PlusCircle, ShoppingCart, Trash2, Calendar, Edit2, BarChart2, X, Check } from 'lucide-react';
 
 const BRANDS = [
   { k: 'samsung', l: 'Samsung', c: 'bg-blue-500' },
@@ -16,23 +16,44 @@ const BRANDS = [
 const Tracker = () => {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [queue, setQueue] = useState([]);
+
+  // Form State
   const [brand, setBrand] = useState('');
   const [model, setModel] = useState('');
   const [variant, setVariant] = useState('');
   const [qty, setQty] = useState(1);
   const [price, setPrice] = useState('');
 
-  const { sales, addSale, clearDate } = useAppStore();
-  const entry = sales[date] || { models: '' };
+  // UI State
+  const [editId, setEditId] = useState(null);
+  const [showMtd, setShowMtd] = useState(false);
+  const [mtdMonth, setMtdMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
+
+  const { sales, addSale, deleteSale, updateSale, clearDate } = useAppStore();
+
+  const dayData = sales[date] || { entries: [] };
+  // Fallback for legacy data (convert string log to empty array if needed, but store handles it)
+  const entries = dayData.entries || [];
 
   const addToQueue = () => {
     if (!brand || !model) return alert("Please select Brand and Model");
     const qVal = parseInt(qty) || 1;
     const pVal = parseInt(price) || 0;
 
-    setQueue([...queue, { brand, model, variant, qty: qVal, price: pVal, total: qVal * pVal }]);
-    // Reset fields except Date
-    setModel(''); setVariant(''); setQty(1); setPrice('');
+    if (editId) {
+        // Update Mode
+        updateSale(date, editId, { brand, model, variant, qty: qVal, price: pVal, total: qVal * pVal });
+        setEditId(null);
+        resetForm();
+    } else {
+        // Queue Mode
+        setQueue([...queue, { brand, model, variant, qty: qVal, price: pVal, total: qVal * pVal }]);
+        resetForm();
+    }
+  };
+
+  const resetForm = () => {
+      setModel(''); setVariant(''); setQty(1); setPrice(''); setBrand('');
   };
 
   const removeFromQueue = (index) => {
@@ -44,14 +65,55 @@ const Tracker = () => {
   const saveQueue = () => {
     queue.forEach(item => addSale(date, item));
     setQueue([]);
-    alert("Saved successfully!");
+    // alert("Saved successfully!");
   };
 
-  const handleClearDate = () => {
-    if (confirm("Are you sure you want to clear the selected date's data?")) {
-      clearDate(date);
-    }
+  const handleEdit = (entry) => {
+      setEditId(entry.id);
+      setBrand(entry.brand);
+      setModel(entry.model);
+      setVariant(entry.variant || '');
+      setQty(entry.qty);
+      setPrice(entry.price);
+      // Scroll to top
+      window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+
+  const handleDelete = (id) => {
+      if(confirm("Delete this entry?")) {
+          deleteSale(date, id);
+      }
+  };
+
+  // MTD Calculation
+  const mtdStats = useMemo(() => {
+      if (!showMtd) return [];
+      const stats = {};
+      BRANDS.forEach(b => stats[b.k] = { qty: 0, val: 0 });
+
+      Object.keys(sales).forEach(d => {
+          if(d.startsWith(mtdMonth)) {
+              const day = sales[d];
+              if(day.entries) {
+                  day.entries.forEach(e => {
+                      if(stats[e.brand]) {
+                          stats[e.brand].qty += e.qty;
+                          stats[e.brand].val += e.total;
+                      }
+                  });
+              } else {
+                  // Fallback for legacy aggregates
+                   BRANDS.forEach(b => {
+                       if(day[b.k]) {
+                           stats[b.k].qty += day[b.k];
+                           stats[b.k].val += (day[b.k+'Val'] || 0);
+                       }
+                   });
+              }
+          }
+      });
+      return stats;
+  }, [sales, mtdMonth, showMtd]);
 
   return (
     <div className="fade-in space-y-6 pb-24">
@@ -66,13 +128,20 @@ const Tracker = () => {
             className="bg-transparent font-bold dark:text-white outline-none"
           />
         </div>
-        <button onClick={handleClearDate} className="text-xs font-bold text-red-500 bg-red-50 dark:bg-red-900/20 px-3 py-2 rounded-lg">Clear</button>
+        <div className="flex gap-2">
+            <button onClick={() => setShowMtd(true)} className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 rounded-lg"><BarChart2 size={20}/></button>
+            <button onClick={() => { if(confirm("Clear Date?")) clearDate(date); }} className="p-2 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-lg"><Trash2 size={20}/></button>
+        </div>
       </div>
 
-      {/* Add Card */}
-      <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-lg border border-slate-100 dark:border-slate-700 relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-1 bg-indigo-500"></div>
-        <h3 className="font-bold mb-4 flex items-center gap-2 dark:text-white"><PlusCircle size={20} /> Add Sale</h3>
+      {/* Add / Edit Card */}
+      <div className={`p-6 rounded-3xl shadow-lg border relative overflow-hidden transition-colors ${editId ? 'bg-amber-50 border-amber-200 dark:bg-slate-800 dark:border-amber-900' : 'bg-white border-slate-100 dark:bg-slate-800 dark:border-slate-700'}`}>
+        <div className={`absolute top-0 left-0 w-full h-1 ${editId ? 'bg-amber-500' : 'bg-indigo-500'}`}></div>
+        <h3 className="font-bold mb-4 flex items-center gap-2 dark:text-white">
+            {editId ? <Edit2 size={20} className="text-amber-500"/> : <PlusCircle size={20} />}
+            {editId ? 'Edit Entry' : 'Add Sale'}
+        </h3>
+
         <div className="space-y-3">
           <select value={brand} onChange={(e) => setBrand(e.target.value)} className="w-full p-3 rounded-xl bg-slate-50 dark:bg-slate-700 dark:text-white font-bold text-sm border-none focus:ring-2 focus:ring-indigo-500">
             <option value="">Select Brand</option>
@@ -86,12 +155,18 @@ const Tracker = () => {
             <input value={variant} onChange={(e) => setVariant(e.target.value)} placeholder="Variant (8/128)" className="col-span-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-700 dark:text-white font-bold text-sm border-none focus:ring-2 focus:ring-indigo-500" />
             <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Price" className="col-span-1 p-3 rounded-xl bg-slate-50 dark:bg-slate-700 dark:text-white font-bold text-sm border-none focus:ring-2 focus:ring-indigo-500" />
           </div>
-          <button onClick={addToQueue} className="w-full bg-slate-900 dark:bg-indigo-600 text-white py-3 rounded-xl font-bold mt-2 hover:opacity-90 transition">Add to Queue</button>
+
+          <div className="flex gap-2">
+            {editId && <button onClick={() => { setEditId(null); resetForm(); }} className="flex-1 bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 py-3 rounded-xl font-bold mt-2">Cancel</button>}
+            <button onClick={addToQueue} className={`flex-1 text-white py-3 rounded-xl font-bold mt-2 hover:opacity-90 transition ${editId ? 'bg-amber-500' : 'bg-slate-900 dark:bg-indigo-600'}`}>
+                {editId ? 'Update Entry' : 'Add to Queue'}
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Queue */}
-      {queue.length > 0 && (
+      {/* Queue (Only in Add Mode) */}
+      {!editId && queue.length > 0 && (
         <div className="bg-slate-800 rounded-3xl p-5 text-white shadow-xl">
           <div className="flex justify-between items-center mb-4 border-b border-slate-600 pb-3">
             <h4 className="font-bold flex items-center gap-2"><ShoppingCart size={18} /> Queue ({queue.length})</h4>
@@ -114,14 +189,66 @@ const Tracker = () => {
         </div>
       )}
 
-      {/* Quick Log View */}
-      {entry.models && (
-        <div className="bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-100 dark:border-slate-700">
-          <h4 className="text-xs font-bold text-slate-400 uppercase mb-2">Logs for {date}</h4>
-          <div className="text-xs font-mono text-slate-600 dark:text-slate-400 whitespace-pre-wrap pl-2 border-l-2 border-slate-200">
-            {entry.models}
+      {/* Daily Entries List (Editable) */}
+      <div className="space-y-2">
+          <h4 className="text-xs font-bold text-slate-400 uppercase ml-2">Sales Log ({entries.length})</h4>
+          {entries.length === 0 ? (
+              <div className="text-center p-8 text-slate-400 text-sm bg-slate-50 dark:bg-slate-800/50 rounded-2xl">No sales recorded today.</div>
+          ) : (
+              entries.slice().reverse().map((e) => (
+                  <div key={e.id} className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex justify-between items-center">
+                      <div>
+                          <div className="font-bold text-sm dark:text-white">{e.brand} {e.model} <span className="text-slate-400 font-normal">{e.variant}</span></div>
+                          <div className="text-xs text-slate-500 mt-1 flex gap-2">
+                              <span className="bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded">{e.qty} Units</span>
+                              <span className="text-emerald-600 dark:text-emerald-400 font-mono">₹{e.total}</span>
+                          </div>
+                      </div>
+                      <div className="flex gap-1">
+                          <button onClick={() => handleEdit(e)} className="p-2 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg"><Edit2 size={16}/></button>
+                          <button onClick={() => handleDelete(e.id)} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"><Trash2 size={16}/></button>
+                      </div>
+                  </div>
+              ))
+          )}
+      </div>
+
+      {/* MTD Modal */}
+      {showMtd && (
+          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+              <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl p-6 relative">
+                  <button onClick={() => setShowMtd(false)} className="absolute top-4 right-4 p-2 bg-slate-100 dark:bg-slate-800 rounded-full"><X size={20}/></button>
+                  <h3 className="font-bold text-xl mb-4 dark:text-white flex items-center gap-2"><BarChart2 className="text-indigo-500"/> MTD Report</h3>
+
+                  <input type="month" value={mtdMonth} onChange={(e) => setMtdMonth(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl mb-4 font-bold dark:text-white" />
+
+                  <div className="max-h-[60vh] overflow-y-auto">
+                      <table className="w-full text-sm text-left">
+                          <thead className="text-xs text-slate-500 uppercase bg-slate-50 dark:bg-slate-800">
+                              <tr>
+                                  <th className="px-3 py-3 rounded-l-lg">Brand</th>
+                                  <th className="px-3 py-3">Qty</th>
+                                  <th className="px-3 py-3 rounded-r-lg">Val</th>
+                              </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                              {BRANDS.map(b => (
+                                  <tr key={b.k}>
+                                      <td className="px-3 py-3 font-bold dark:text-slate-300">{b.l}</td>
+                                      <td className="px-3 py-3 dark:text-slate-400">{mtdStats[b.k].qty}</td>
+                                      <td className="px-3 py-3 font-mono text-emerald-600 dark:text-emerald-400">{mtdStats[b.k].val.toLocaleString()}</td>
+                                  </tr>
+                              ))}
+                              <tr className="bg-slate-50 dark:bg-slate-800 font-bold">
+                                  <td className="px-3 py-3">TOTAL</td>
+                                  <td className="px-3 py-3">{Object.values(mtdStats).reduce((a,c) => a+c.qty, 0)}</td>
+                                  <td className="px-3 py-3 text-emerald-600">{Object.values(mtdStats).reduce((a,c) => a+c.val, 0).toLocaleString()}</td>
+                              </tr>
+                          </tbody>
+                      </table>
+                  </div>
+              </div>
           </div>
-        </div>
       )}
     </div>
   );

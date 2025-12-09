@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { Bar } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend } from 'chart.js';
@@ -18,19 +18,17 @@ const BRANDS = [
 
 const Analytics = () => {
   const { sales } = useAppStore();
+  const [metric, setMetric] = useState('volume'); // 'volume' or 'value'
 
   const chartData = useMemo(() => {
     // Buckets: "1-7", "8-14", "15-21", "22-End"
-    // Data structure: { samsung: [b1, b2, b3, b4], iphone: [...], ... }
-    const buckets = [0, 0, 0, 0]; // Just to size the arrays
     const data = {};
     BRANDS.forEach(b => data[b.k] = [0, 0, 0, 0]);
 
     Object.keys(sales).forEach(dateStr => {
       const d = new Date(dateStr);
       const day = d.getDate();
-      // Filter for current month only? Assuming all data for now, or maybe filter by current month.
-      // Let's stick to current month for "Weekly Achievement" usually implies current context.
+
       const currentMonth = new Date().getMonth();
       const currentYear = new Date().getFullYear();
 
@@ -42,10 +40,25 @@ const Analytics = () => {
          else bucketIdx = 3;
 
          const entry = sales[dateStr];
-         BRANDS.forEach(b => {
-            const qty = entry[b.k] || 0;
-            data[b.k][bucketIdx] += qty;
-         });
+
+         // Use entries array if available for accuracy, else fallback to aggregates
+         if (entry.entries) {
+             entry.entries.forEach(e => {
+                 const k = e.brand;
+                 const val = metric === 'volume' ? e.qty : e.total;
+                 if(data[k]) data[k][bucketIdx] += val;
+             });
+         } else {
+             // Fallback
+             BRANDS.forEach(b => {
+                const k = b.k;
+                let val = 0;
+                if (metric === 'volume') val = entry[k] || 0;
+                else val = entry[k+'Val'] || 0;
+
+                data[k][bucketIdx] += val;
+             });
+         }
       }
     });
 
@@ -57,23 +70,43 @@ const Analytics = () => {
         backgroundColor: b.color,
       }))
     };
-  }, [sales]);
+  }, [sales, metric]);
 
   const options = {
     responsive: true,
+    maintainAspectRatio: false,
     plugins: {
-      legend: { position: 'bottom' },
-      title: { display: true, text: 'Weekly Volume by Brand (Current Month)' },
+      legend: { position: 'bottom', labels: { usePointStyle: true, color: '#94a3b8' } },
+      title: {
+          display: true,
+          text: `Weekly ${metric === 'volume' ? 'Volume (Units)' : 'Value (INR)'} - Current Month`,
+          color: '#94a3b8'
+      },
     },
     scales: {
-      x: { stacked: true },
-      y: { stacked: true }
+      x: { stacked: true, grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+      y: { stacked: true, grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }
     }
   };
 
   return (
-    <div className="fade-in pb-24 p-4">
-       <div className="bg-white dark:bg-slate-800 p-4 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 h-[500px] flex flex-col justify-center">
+    <div className="fade-in pb-24 p-4 space-y-4">
+       <div className="flex justify-center bg-white dark:bg-slate-800 p-1 rounded-xl w-fit mx-auto shadow-sm border border-slate-100 dark:border-slate-700">
+           <button
+               onClick={() => setMetric('volume')}
+               className={`px-4 py-2 rounded-lg text-sm font-bold transition ${metric === 'volume' ? 'bg-indigo-500 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+           >
+               Volume
+           </button>
+           <button
+               onClick={() => setMetric('value')}
+               className={`px-4 py-2 rounded-lg text-sm font-bold transition ${metric === 'value' ? 'bg-emerald-500 text-white shadow-lg' : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700'}`}
+           >
+               Value
+           </button>
+       </div>
+
+       <div className="bg-white dark:bg-slate-800 p-4 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 h-[500px]">
           <Bar data={chartData} options={options} />
        </div>
     </div>

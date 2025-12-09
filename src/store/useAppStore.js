@@ -23,23 +23,96 @@ export const useAppStore = create(
 
       // Actions
       setSales: (sales) => set({ sales }),
+
       addSale: (date, saleItem) => set((state) => {
-        const ent = state.sales[date] || { models: '' };
+        const ent = state.sales[date] || { entries: [], models: '' };
+
+        // Ensure entries array exists (migration)
+        if (!ent.entries) ent.entries = [];
+
         const k = saleItem.brand;
+        const newEntry = {
+            id: Date.now() + Math.random().toString(36).substr(2, 9),
+            ...saleItem,
+            timestamp: new Date().toISOString()
+        };
+
+        // Update entries
+        ent.entries.push(newEntry);
+
+        // Update Aggregates (Keep for compatibility)
         ent[k] = (ent[k] || 0) + saleItem.qty;
         ent[k+'Val'] = (ent[k+'Val'] || 0) + saleItem.total;
 
-        // Log Format
+        // Update Log String (Keep for compatibility)
         const log = `[${new Date().toLocaleTimeString()}] ${saleItem.brand} ${saleItem.model} ${saleItem.variant ? '('+saleItem.variant+') ' : ''}- ${saleItem.qty}u (Val: ${saleItem.total})\n`;
         ent.models = (ent.models || "") + log;
 
-        return { sales: { ...state.sales, [date]: ent } };
+        return { sales: { ...state.sales, [date]: { ...ent } } }; // spread ent to trigger update
       }),
+
+      deleteSale: (date, entryId) => set((state) => {
+        const ent = state.sales[date];
+        if(!ent || !ent.entries) return state;
+
+        const targetIndex = ent.entries.findIndex(e => e.id === entryId);
+        if(targetIndex === -1) return state;
+
+        const target = ent.entries[targetIndex];
+
+        // Decrement Aggregates
+        const k = target.brand;
+        ent[k] = Math.max(0, (ent[k] || 0) - target.qty);
+        ent[k+'Val'] = Math.max(0, (ent[k+'Val'] || 0) - target.total);
+
+        // Remove from entries
+        ent.entries.splice(targetIndex, 1);
+
+        // Rebuild Log String from remaining entries (Cleanest way to sync log)
+        ent.models = ent.entries.map(e => `[${new Date(e.timestamp).toLocaleTimeString()}] ${e.brand} ${e.model} ${e.variant ? '('+e.variant+') ' : ''}- ${e.qty}u (Val: ${e.total})\n`).join('');
+
+        return { sales: { ...state.sales, [date]: { ...ent } } };
+      }),
+
+      updateSale: (date, entryId, newDetails) => set((state) => {
+          // This is a complex operation: easiest is Delete then Add, but that changes ID/Timestamp order.
+          // Better: Adjust diffs.
+          const ent = state.sales[date];
+          if(!ent || !ent.entries) return state;
+
+          const index = ent.entries.findIndex(e => e.id === entryId);
+          if(index === -1) return state;
+
+          const oldEntry = ent.entries[index];
+          const newEntry = { ...oldEntry, ...newDetails };
+
+          // Adjust aggregates
+          const oldK = oldEntry.brand;
+          const newK = newEntry.brand;
+
+          // Remove old stats
+          ent[oldK] = (ent[oldK] || 0) - oldEntry.qty;
+          ent[oldK+'Val'] = (ent[oldK+'Val'] || 0) - oldEntry.total;
+
+          // Add new stats
+          ent[newK] = (ent[newK] || 0) + newEntry.qty;
+          ent[newK+'Val'] = (ent[newK+'Val'] || 0) + newEntry.total;
+
+          // Update entry
+          ent.entries[index] = newEntry;
+
+          // Rebuild Log
+          ent.models = ent.entries.map(e => `[${new Date(e.timestamp).toLocaleTimeString()}] ${e.brand} ${e.model} ${e.variant ? '('+e.variant+') ' : ''}- ${e.qty}u (Val: ${e.total})\n`).join('');
+
+          return { sales: { ...state.sales, [date]: { ...ent } } };
+      }),
+
       clearDate: (date) => set((state) => {
         const newSales = { ...state.sales };
         delete newSales[date];
         return { sales: newSales };
       }),
+
       setProfile: (profile) => set({ profile }),
       setPin: (pin) => set({ pin }),
       setTheme: (theme) => set({ theme }),
@@ -47,12 +120,61 @@ export const useAppStore = create(
       resetIncConfig: () => set({ incConfig: INCENTIVE_DEFAULTS }),
 
       // Master Actions
-      importData: (data) => set(data),
+      importData: (data, mode = 'replace') => set((state) => {
+          if (mode === 'replace') {
+              return { ...data };
+          } else {
+              // Merge Mode
+              // Strategy: Merge Sales day by day. Keep existing Profile/Pin if not in data?
+              // Usually backup has everything. Let's overwrite Profile/Config but MERGE Sales.
+              const mergedSales = { ...state.sales };
+
+              Object.keys(data.sales || {}).forEach(date => {
+                  const incomeDay = data.sales[date];
+                  const existingDay = mergedSales[date];
+
+                  if (!existingDay) {
+                      mergedSales[date] = incomeDay;
+                  } else {
+                      // Both have data for this day. Merge entries.
+                      const incomeEntries = incomeDay.entries || [];
+                      const existingEntries = existingDay.entries || [];
+
+                      // Avoid duplicates by ID
+                      const existingIds = new Set(existingEntries.map(e => e.id));
+                      const uniqueNewEntries = incomeEntries.filter(e => !existingIds.has(e.id));
+
+                      existingDay.entries = [...existingEntries, ...uniqueNewEntries];
+
+                      // Re-calc aggregates for this day
+                      const brands = ['samsung','iphone','oppo','vivo','realme','mi','moto','other'];
+                      brands.forEach(b => { existingDay[b] = 0; existingDay[b+'Val'] = 0; });
+
+                      existingDay.entries.forEach(e => {
+                          const k = e.brand;
+                          existingDay[k] = (existingDay[k] || 0) + e.qty;
+                          existingDay[k+'Val'] = (existingDay[k+'Val'] || 0) + e.total;
+                      });
+
+                      // Rebuild Log
+                      existingDay.models = existingDay.entries.map(e => `[${new Date(e.timestamp).toLocaleTimeString()}] ${e.brand} ${e.model} ${e.variant ? '('+e.variant+') ' : ''}- ${e.qty}u (Val: ${e.total})\n`).join('');
+                  }
+              });
+
+              return {
+                  ...state,
+                  profile: data.profile || state.profile, // Overwrite profile? Maybe
+                  incConfig: data.incConfig || state.incConfig,
+                  sales: mergedSales
+              };
+          }
+      }),
+
       wipeData: () => set({ sales: {}, profile: { name: "", code: "", outlet: "" }, pin: "1234", incConfig: INCENTIVE_DEFAULTS }),
     }),
     {
       name: 'sec-unified-storage',
-      storage: createJSONStorage(() => localStorage), // Using localStorage for now as it persists well in WebViews too.
+      storage: createJSONStorage(() => localStorage),
     }
   )
 );
