@@ -107,6 +107,7 @@ const Analytics = () => {
             const entry = sales[dateStr];
             if (entry.entries) {
                 entry.entries.forEach(e => {
+                    if (e.brand !== 'samsung') return;
                     const price = e.price || 0;
                     if (price >= 100000) brackets[0]++;
                     else if (price >= 70000) brackets[1]++;
