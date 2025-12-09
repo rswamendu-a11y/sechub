@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { Settings, Trash2, PlusCircle, Save, RotateCcw, Download, ChevronRight, X } from 'lucide-react';
+import { Settings, Trash2, PlusCircle, Save, RotateCcw, Download, ChevronRight, X, Info } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
@@ -11,7 +11,7 @@ const Incentive = () => {
   const [activeTab, setActiveTab] = useState('SP'); // For Config
 
   // Local state for calculation inputs (Rows)
-  const [rows, setRows] = useState({ sp: [], tb: [], wr: [], cp: [], npc: [] });
+  const [rows, setRows] = useState({ sp: [], tb: [], wr: [], cp: [], npc: [], bun: [] });
   const [meta, setMeta] = useState({
       k_ff7: 0, t_ff7: 'low', k_s25: 0, t_s25: 'low',
       accVal: 0, accBase: 0, target: 50, channel: 'standard', status: 'existing'
@@ -25,7 +25,9 @@ const Incentive = () => {
             sp: [{ qty: 1, rate: 0, fm: false }],
             tb: [{ qty: 1, rate: 0, fm: false }],
             wr: [{ qty: 1, rate: 0, fm: false }],
-            cp: [], npc: []
+            cp: [{ qty: 1, rate: 0, fm: false }],
+            npc: [{ qty: 1, rate: 0, fm: false }],
+            bun: [{ qty: 1, rate: 0, fm: false }]
         });
     }
   }, []);
@@ -85,28 +87,38 @@ const Incentive = () => {
 
       let cpTot=0, cpQ=0;
       rows.cp.forEach(r => { cpQ+=r.qty; cpTot+=(r.qty||0)*r.rate; });
-      if(cpQ>=8) cpTot*=1.2;
-      if(cpQ>0 && cpQ<3) { cpTot=0; logs.push({c:"Care+", n:"Gate < 3", v:0}); }
-      else {
-          if(meta.k_ff7 > 0) cpTot += meta.k_ff7 * (meta.t_ff7==='high' ? c.cp.kickers.ff7.h : c.cp.kickers.ff7.l);
-          if(meta.k_s25 > 0) cpTot += meta.k_s25 * (meta.t_s25==='high' ? c.cp.kickers.s25.h : c.cp.kickers.s25.l);
-          logs.push({c:"Care+", n:"", v:cpTot});
-      }
+
+      // Kickers
+      let kickTot = 0;
+      if(meta.k_ff7 > 0) kickTot += meta.k_ff7 * (meta.t_ff7==='high' ? c.cp.kickers.ff7.h : c.cp.kickers.ff7.l);
+      if(meta.k_s25 > 0) kickTot += meta.k_s25 * (meta.t_s25==='high' ? c.cp.kickers.s25.h : c.cp.kickers.s25.l);
+
+      let cpVol = cpTot; // Base volume incentive
+      if(cpQ>=8) cpVol*=1.2; // Multiplier for high volume
+      if(cpQ>0 && cpQ<3) { cpVol=0; logs.push({c:"Care+", n:"Gate < 3", v:0}); } // Gate check
+
+      let cpFinal = cpVol + kickTot;
+      logs.push({c:"Care+", n:`Vol: ${cpQ}, Kickers: ${kickTot}`, v:cpFinal});
 
       let npcTot=0; rows.npc.forEach(r => npcTot += (r.qty||0)*r.rate);
       let npcFin = Math.min(npcTot, c.caps.npc);
       logs.push({c:"Note PC", n:npcTot>npcFin?"Capped":"", v:npcFin});
 
       let bunTot = 0;
+      rows.bun.forEach(r => bunTot += (r.qty||0)*r.rate);
+      let bunFin = Math.min(bunTot, c.caps.bun);
+      logs.push({c:"Bundles", n:bunTot>bunFin?"Capped":"", v:bunFin});
+
       let accTot = 0;
       const ab = meta.accBase || (spRaw * 25);
+      let accPct = 0;
       if(ab > 0 && meta.channel!=='exclusive') {
-          const pct = (meta.accVal/ab)*100;
-          for(let t of c.acc) { if(pct>=t.min) { accTot = t.rate; break; } }
+          accPct = (meta.accVal/ab)*100;
+          for(let t of c.acc) { if(accPct>=t.min) { accTot = t.rate; break; } }
       }
-      logs.push({c:"Accessories", n:"", v:accTot});
+      logs.push({c:"Accessories", n:`Base: ${ab.toFixed(0)} (${accPct.toFixed(1)}%)`, v:accTot});
 
-      let grand = comb + tbFin + npcFin + cpTot + bunTot + accTot;
+      let grand = comb + tbFin + npcFin + cpFinal + bunFin + accTot;
       setResult({ logs, grand, spQ, ach: (ach*100).toFixed(0) });
   };
 
@@ -433,21 +445,30 @@ const Incentive = () => {
                     <button onClick={() => setView('config')} className="text-xs bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-lg flex items-center gap-1"><Settings size={14} /> Config</button>
                 </div>
             </div>
+
+            <div className="mb-3">
+                 <label className="text-xs font-bold text-slate-400 block mb-1">Store Type / Channel</label>
+                 <select value={meta.channel} onChange={(e)=>setMeta({...meta, channel: e.target.value})} className="w-full p-2 text-xs rounded border dark:bg-slate-900 dark:text-white">
+                     <option value="standard">Standard Store</option>
+                     <option value="sis_pro">SIS / Pro / New Joinee</option>
+                     <option value="exclusive">Exclusive / Experience</option>
+                 </select>
+            </div>
+
             <div className="grid grid-cols-2 gap-3 text-xs">
                  <div><label className="font-bold text-slate-400 block">Target</label><input type="number" value={meta.target} onChange={(e)=>setMeta({...meta, target: e.target.value})} className="w-full bg-slate-50 dark:bg-slate-900 dark:text-white border-none rounded p-1"/></div>
                  <div><label className="font-bold text-slate-400 block">Achieved</label><div className="font-bold text-lg dark:text-white">{result.spQ} <span className="text-xs text-slate-400">({result.ach}%)</span></div></div>
             </div>
         </div>
 
-        {/* Categories (Simplified for MVP, expanding on request) */}
-        {/* SP */}
+        {/* Smartphones */}
         <div className="bg-white dark:bg-slate-800 rounded-xl border-l-4 border-l-blue-600 shadow-sm p-3">
              <div className="flex justify-between items-center mb-2">
                  <span className="font-bold text-sm dark:text-white">Smartphones</span>
-                 <button onClick={() => addRow('sp')} className="text-xs bg-slate-100 p-1 rounded">+ Add</button>
+                 <button onClick={() => addRow('sp')} className="text-xs bg-slate-100 dark:bg-slate-700 dark:text-white p-1 rounded">+ Add</button>
              </div>
              {rows.sp.map((r, i) => (
-                 <div key={i} className="flex gap-2 mb-2">
+                 <div key={i} className="flex gap-2 mb-2 items-center">
                      <select value={r.rate} onChange={(e)=>updRow('sp', i, 'rate', e.target.value)} className="flex-1 text-xs p-2 rounded border dark:bg-slate-900 dark:text-white">
                          <option value="0">Select Slab</option>
                          {incConfig.sp.slabs.map((s, idx) => <option key={idx} value={s.rate}>{s.label} ({s.rate})</option>)}
@@ -458,24 +479,141 @@ const Incentive = () => {
              ))}
         </div>
 
-        {/* Other Sections Placeholder (TB/WR) - just reusing logic for brevity if needed, but keeping simple for now */}
-        {/* TB */}
+        {/* Tablets */}
         <div className="bg-white dark:bg-slate-800 rounded-xl border-l-4 border-l-purple-600 shadow-sm p-3">
              <div className="flex justify-between items-center mb-2">
                  <span className="font-bold text-sm dark:text-white">Tablets</span>
-                 <button onClick={() => addRow('tb')} className="text-xs bg-slate-100 p-1 rounded">+ Add</button>
+                 <button onClick={() => addRow('tb')} className="text-xs bg-slate-100 dark:bg-slate-700 dark:text-white p-1 rounded">+ Add</button>
              </div>
              {rows.tb.map((r, i) => (
-                 <div key={i} className="flex gap-2 mb-2">
+                 <div key={i} className="flex gap-2 mb-2 items-center">
                      <select value={r.rate} onChange={(e)=>updRow('tb', i, 'rate', e.target.value)} className="flex-1 text-xs p-2 rounded border dark:bg-slate-900 dark:text-white">
                          <option value="0">Select Model</option>
-                         {incConfig.tb.slabs.map((s, idx) => <option key={'s'+idx} value={s.rate}>{s.label}</option>)}
-                         {incConfig.tb.focus.map((f, idx) => <option key={'f'+idx} value={f.rate}>{f.name}</option>)}
+                         {incConfig.tb.slabs.map((s, idx) => <option key={'s'+idx} value={s.rate}>{s.label} ({s.rate})</option>)}
+                         {incConfig.tb.focus.map((f, idx) => <option key={'f'+idx} value={f.rate}>{f.name} ({f.rate})</option>)}
                      </select>
                      <input type="number" value={r.qty} onChange={(e)=>updRow('tb', i, 'qty', e.target.value)} className="w-14 text-center text-xs p-2 rounded border dark:bg-slate-900 dark:text-white" />
                      <button onClick={() => delRow('tb', i)} className="text-red-400"><Trash2 size={14}/></button>
                  </div>
              ))}
+        </div>
+
+        {/* Wearables */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl border-l-4 border-l-pink-500 shadow-sm p-3">
+             <div className="flex justify-between items-center mb-2">
+                 <span className="font-bold text-sm dark:text-white">Wearables</span>
+                 <button onClick={() => addRow('wr')} className="text-xs bg-slate-100 dark:bg-slate-700 dark:text-white p-1 rounded">+ Add</button>
+             </div>
+             {rows.wr.map((r, i) => (
+                 <div key={i} className="flex gap-2 mb-2 items-center">
+                     <select value={r.rate} onChange={(e)=>updRow('wr', i, 'rate', e.target.value)} className="flex-1 text-xs p-2 rounded border dark:bg-slate-900 dark:text-white">
+                         <option value="0">Select Model</option>
+                         {incConfig.wr.map((w, idx) => <option key={idx} value={w.rate}>{w.name} ({w.rate})</option>)}
+                     </select>
+                     <input type="number" value={r.qty} onChange={(e)=>updRow('wr', i, 'qty', e.target.value)} className="w-14 text-center text-xs p-2 rounded border dark:bg-slate-900 dark:text-white" />
+                     <button onClick={() => delRow('wr', i)} className="text-red-400"><Trash2 size={14}/></button>
+                 </div>
+             ))}
+        </div>
+
+        {/* Care+ */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl border-l-4 border-l-indigo-600 shadow-sm p-3">
+             <div className="flex justify-between items-center mb-2">
+                 <span className="font-bold text-sm dark:text-white">Care+</span>
+                 <button onClick={() => addRow('cp')} className="text-xs bg-slate-100 dark:bg-slate-700 dark:text-white p-1 rounded">+ Add</button>
+             </div>
+             {/* Volume Slabs */}
+             {rows.cp.map((r, i) => (
+                 <div key={i} className="flex gap-2 mb-2 items-center">
+                     <select value={r.rate} onChange={(e)=>updRow('cp', i, 'rate', e.target.value)} className="flex-1 text-xs p-2 rounded border dark:bg-slate-900 dark:text-white">
+                         <option value="0">Select Slab</option>
+                         {incConfig.cp.slabs.map((s, idx) => <option key={idx} value={s.rate}>{s.label} ({s.rate})</option>)}
+                     </select>
+                     <input type="number" value={r.qty} onChange={(e)=>updRow('cp', i, 'qty', e.target.value)} className="w-14 text-center text-xs p-2 rounded border dark:bg-slate-900 dark:text-white" />
+                     <button onClick={() => delRow('cp', i)} className="text-red-400"><Trash2 size={14}/></button>
+                 </div>
+             ))}
+
+             {/* Kickers */}
+             <div className="mt-4 border-t border-slate-100 dark:border-slate-700 pt-2">
+                 <h5 className="text-xs font-bold text-indigo-500 mb-2">Kickers</h5>
+                 <div className="grid grid-cols-2 gap-2">
+                     <div className="p-2 bg-slate-50 dark:bg-slate-900 rounded">
+                         <label className="block text-[10px] text-slate-400">Flip/Fold 7 (S25)</label>
+                         <div className="flex gap-1 mt-1">
+                             <input type="number" placeholder="Qty" value={meta.k_ff7} onChange={(e)=>setMeta({...meta, k_ff7: parseFloat(e.target.value)||0})} className="w-12 text-xs p-1 border rounded dark:bg-slate-800 dark:text-white"/>
+                             <select value={meta.t_ff7} onChange={(e)=>setMeta({...meta, t_ff7: e.target.value})} className="text-[10px] p-1 border rounded dark:bg-slate-800 dark:text-white">
+                                 <option value="low">Low</option>
+                                 <option value="high">High</option>
+                             </select>
+                         </div>
+                     </div>
+                     <div className="p-2 bg-slate-50 dark:bg-slate-900 rounded">
+                         <label className="block text-[10px] text-slate-400">S25 / Flagship</label>
+                         <div className="flex gap-1 mt-1">
+                             <input type="number" placeholder="Qty" value={meta.k_s25} onChange={(e)=>setMeta({...meta, k_s25: parseFloat(e.target.value)||0})} className="w-12 text-xs p-1 border rounded dark:bg-slate-800 dark:text-white"/>
+                             <select value={meta.t_s25} onChange={(e)=>setMeta({...meta, t_s25: e.target.value})} className="text-[10px] p-1 border rounded dark:bg-slate-800 dark:text-white">
+                                 <option value="low">Low</option>
+                                 <option value="high">High</option>
+                             </select>
+                         </div>
+                     </div>
+                 </div>
+             </div>
+        </div>
+
+        {/* Note PC */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl border-l-4 border-l-teal-600 shadow-sm p-3">
+             <div className="flex justify-between items-center mb-2">
+                 <span className="font-bold text-sm dark:text-white">Note PC</span>
+                 <button onClick={() => addRow('npc')} className="text-xs bg-slate-100 dark:bg-slate-700 dark:text-white p-1 rounded">+ Add</button>
+             </div>
+             {rows.npc.map((r, i) => (
+                 <div key={i} className="flex gap-2 mb-2 items-center">
+                     <select value={r.rate} onChange={(e)=>updRow('npc', i, 'rate', e.target.value)} className="flex-1 text-xs p-2 rounded border dark:bg-slate-900 dark:text-white">
+                         <option value="0">Select Model</option>
+                         {incConfig.npc.map((n, idx) => <option key={idx} value={n.rate}>{n.name} ({n.rate})</option>)}
+                     </select>
+                     <input type="number" value={r.qty} onChange={(e)=>updRow('npc', i, 'qty', e.target.value)} className="w-14 text-center text-xs p-2 rounded border dark:bg-slate-900 dark:text-white" />
+                     <button onClick={() => delRow('npc', i)} className="text-red-400"><Trash2 size={14}/></button>
+                 </div>
+             ))}
+        </div>
+
+        {/* Bundles */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl border-l-4 border-l-orange-500 shadow-sm p-3">
+             <div className="flex justify-between items-center mb-2">
+                 <span className="font-bold text-sm dark:text-white">Bundles</span>
+                 <button onClick={() => addRow('bun')} className="text-xs bg-slate-100 dark:bg-slate-700 dark:text-white p-1 rounded">+ Add</button>
+             </div>
+             {rows.bun.map((r, i) => (
+                 <div key={i} className="flex gap-2 mb-2 items-center">
+                     <select value={r.rate} onChange={(e)=>updRow('bun', i, 'rate', e.target.value)} className="flex-1 text-xs p-2 rounded border dark:bg-slate-900 dark:text-white">
+                         <option value="0">Select Bundle</option>
+                         {incConfig.bun.std.map((b, idx) => <option key={'s'+idx} value={b.rate}>{b.name} (Std - {b.rate})</option>)}
+                         {incConfig.bun.excl.map((b, idx) => <option key={'e'+idx} value={b.rate}>{b.name} (Excl - {b.rate})</option>)}
+                     </select>
+                     <input type="number" value={r.qty} onChange={(e)=>updRow('bun', i, 'qty', e.target.value)} className="w-14 text-center text-xs p-2 rounded border dark:bg-slate-900 dark:text-white" />
+                     <button onClick={() => delRow('bun', i)} className="text-red-400"><Trash2 size={14}/></button>
+                 </div>
+             ))}
+        </div>
+
+        {/* Accessories */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl border-l-4 border-l-yellow-500 shadow-sm p-3">
+             <div className="flex justify-between items-center mb-2">
+                 <span className="font-bold text-sm dark:text-white">Accessories</span>
+             </div>
+             <div className="flex flex-col gap-2">
+                 <div>
+                     <label className="text-xs text-slate-400">Total Accessory Sales (Value)</label>
+                     <input type="number" value={meta.accVal} onChange={(e)=>setMeta({...meta, accVal: parseFloat(e.target.value)||0})} className="w-full p-2 border rounded text-sm font-bold dark:bg-slate-900 dark:text-white" />
+                 </div>
+                 <div className="flex justify-between items-center text-xs text-slate-500 mt-1">
+                     <span>Base Target: {meta.accBase || (rows.sp.reduce((a,c)=>a+(c.qty* (c.fm?incConfig.sp.fm_mult:1)*25),0) || 0)}</span>
+                     <span className="text-emerald-600 font-bold">Payout: ₹{Math.floor(result.logs.find(l=>l.c==='Accessories')?.v || 0)}</span>
+                 </div>
+             </div>
         </div>
 
         {/* Result Footer */}
