@@ -1,11 +1,19 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
-import { UploadCloud, FileText, Image, ExternalLink, Trash2, Eye, X } from 'lucide-react';
+import { UploadCloud, FileText, Image, ExternalLink, Trash2, Eye, X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Document, Page, pdfjs } from 'react-pdf';
+import 'react-pdf/dist/Page/AnnotationLayer.css';
+import 'react-pdf/dist/Page/TextLayer.css';
+
+// Set up PDF.js worker from CDN
+pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
 const Locker = () => {
   const [files, setFiles] = useState([]);
   const [viewingFile, setViewingFile] = useState(null); // { name, data, type }
+  const [numPages, setNumPages] = useState(null);
+  const [pageNumber, setPageNumber] = useState(1);
 
   useEffect(() => {
     loadFiles();
@@ -59,24 +67,21 @@ const Locker = () => {
   };
 
   const handlePreview = async (file) => {
-      if(file.type === 'pdf') {
-          openExternal(file);
-          return;
-      }
-
       try {
           const content = await Filesystem.readFile({
               path: file.path,
               directory: Directory.Data
           });
+
           setViewingFile({
               name: file.name,
-              data: content.data,
-              type: 'image'
+              data: content.data, // Base64 string
+              type: file.type
           });
+          setPageNumber(1);
       } catch(e) {
           console.error(e);
-          alert("Could not load image preview.");
+          alert("Could not load preview.");
       }
   };
 
@@ -155,22 +160,65 @@ const Locker = () => {
            {files.length === 0 && <div className="text-center text-slate-400 text-sm mt-4">No files stored.</div>}
        </div>
 
-       {/* Image Preview Modal */}
+       {/* Preview Modal (Image & PDF) */}
        {viewingFile && (
-           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 animate-in fade-in duration-200">
-               <div className="relative max-w-full max-h-full">
-                   <button
-                       onClick={() => setViewingFile(null)}
-                       className="absolute -top-12 right-0 p-2 text-white bg-slate-800 rounded-full hover:bg-slate-700 transition"
-                   >
-                       <X size={24} />
-                   </button>
-                   <img
-                       src={`data:image/jpeg;base64,${viewingFile.data}`}
-                       className="max-w-full max-h-[80vh] rounded-lg shadow-2xl"
-                       alt="Preview"
-                   />
-                   <div className="text-center text-white mt-4 font-bold">{viewingFile.name}</div>
+           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 p-4 animate-in fade-in duration-200">
+               <div className="relative w-full max-w-4xl max-h-full flex flex-col items-center">
+                   <div className="w-full flex justify-between items-center mb-4 text-white">
+                        <h3 className="font-bold truncate max-w-[80%]">{viewingFile.name}</h3>
+                        <button
+                            onClick={() => setViewingFile(null)}
+                            className="p-2 bg-slate-800 rounded-full hover:bg-slate-700 transition"
+                        >
+                            <X size={24} />
+                        </button>
+                   </div>
+
+                   <div className="relative w-full flex-1 overflow-auto flex justify-center items-center bg-slate-900 rounded-xl p-2 min-h-[50vh]">
+                       {viewingFile.type === 'image' ? (
+                           <img
+                               src={`data:image/jpeg;base64,${viewingFile.data}`}
+                               className="max-w-full max-h-[80vh] rounded-lg shadow-2xl"
+                               alt="Preview"
+                           />
+                       ) : (
+                           <div className="flex flex-col items-center">
+                               <Document
+                                   file={`data:application/pdf;base64,${viewingFile.data}`}
+                                   onLoadSuccess={({ numPages }) => setNumPages(numPages)}
+                                   loading={<div className="text-white">Loading PDF...</div>}
+                                   error={<div className="text-red-400">Failed to load PDF.</div>}
+                               >
+                                   <Page
+                                       pageNumber={pageNumber}
+                                       width={Math.min(window.innerWidth - 40, 600)}
+                                       renderAnnotationLayer={false}
+                                       renderTextLayer={false}
+                                   />
+                               </Document>
+
+                               {numPages && (
+                                   <div className="flex items-center gap-4 mt-4 text-white">
+                                       <button
+                                            disabled={pageNumber <= 1}
+                                            onClick={() => setPageNumber(p => p - 1)}
+                                            className="p-2 bg-slate-800 rounded-lg disabled:opacity-50"
+                                       >
+                                           <ChevronLeft size={20}/>
+                                       </button>
+                                       <span>Page {pageNumber} of {numPages}</span>
+                                       <button
+                                            disabled={pageNumber >= numPages}
+                                            onClick={() => setPageNumber(p => p + 1)}
+                                            className="p-2 bg-slate-800 rounded-lg disabled:opacity-50"
+                                       >
+                                           <ChevronRight size={20}/>
+                                       </button>
+                                   </div>
+                               )}
+                           </div>
+                       )}
+                   </div>
                </div>
            </div>
        )}

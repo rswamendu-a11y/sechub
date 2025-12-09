@@ -539,7 +539,7 @@ const Incentive = () => {
                  <h5 className="text-xs font-bold text-indigo-500 mb-2">Kickers</h5>
                  <div className="grid grid-cols-2 gap-2">
                      <div className="p-2 bg-slate-50 dark:bg-slate-900 rounded">
-                         <label className="block text-[10px] text-slate-400">Flip/Fold 7 (S25)</label>
+                         <label className="block text-[10px] text-slate-400">FF SERIES</label>
                          <div className="flex gap-1 mt-1">
                              <input type="number" placeholder="Qty" value={meta.k_ff7} onChange={(e)=>setMeta({...meta, k_ff7: parseFloat(e.target.value)||0})} className="w-12 text-xs p-1 border rounded dark:bg-slate-800 dark:text-white"/>
                              <select value={meta.t_ff7} onChange={(e)=>setMeta({...meta, t_ff7: e.target.value})} className="text-[10px] p-1 border rounded dark:bg-slate-800 dark:text-white">
@@ -549,7 +549,7 @@ const Incentive = () => {
                          </div>
                      </div>
                      <div className="p-2 bg-slate-50 dark:bg-slate-900 rounded">
-                         <label className="block text-[10px] text-slate-400">S25 / Flagship</label>
+                         <label className="block text-[10px] text-slate-400">S SERIES</label>
                          <div className="flex gap-1 mt-1">
                              <input type="number" placeholder="Qty" value={meta.k_s25} onChange={(e)=>setMeta({...meta, k_s25: parseFloat(e.target.value)||0})} className="w-12 text-xs p-1 border rounded dark:bg-slate-800 dark:text-white"/>
                              <select value={meta.t_s25} onChange={(e)=>setMeta({...meta, t_s25: e.target.value})} className="text-[10px] p-1 border rounded dark:bg-slate-800 dark:text-white">

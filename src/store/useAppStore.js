@@ -16,12 +16,14 @@ export const useAppStore = create(
   persist(
     (set, get) => ({
       sales: {},
+      date: new Date().toISOString().split('T')[0], // Global Persistent Date
       profile: { name: "", code: "", outlet: "" },
       pin: "1234",
       theme: "light",
       incConfig: INCENTIVE_DEFAULTS,
 
       // Actions
+      setDate: (date) => set({ date }),
       setSales: (sales) => set({ sales }),
 
       addSale: (date, saleItem) => set((state) => {

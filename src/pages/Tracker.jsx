@@ -17,7 +17,7 @@ const BRANDS = [
 ];
 
 const Tracker = () => {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const { sales, addSale, deleteSale, updateSale, clearDate, date, setDate } = useAppStore();
   const [queue, setQueue] = useState([]);
 
   // Form State
@@ -31,8 +31,6 @@ const Tracker = () => {
   const [editId, setEditId] = useState(null);
   const [showMtd, setShowMtd] = useState(false);
   const [mtdMonth, setMtdMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
-
-  const { sales, addSale, deleteSale, updateSale, clearDate } = useAppStore();
 
   const dayData = sales[date] || { entries: [] };
   // Fallback for legacy data (convert string log to empty array if needed, but store handles it)
