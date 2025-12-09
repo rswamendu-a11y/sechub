@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
-import { UploadCloud, FileText, Image, ExternalLink, Trash2 } from 'lucide-react';
+import { UploadCloud, FileText, Image, ExternalLink, Trash2, Eye, X } from 'lucide-react';
 
 const Locker = () => {
   const [files, setFiles] = useState([]);
+  const [viewingFile, setViewingFile] = useState(null); // { name, data, type }
 
   useEffect(() => {
     loadFiles();
@@ -23,7 +24,7 @@ const Locker = () => {
 
       const fileList = res.files.map(f => ({
          name: f.name,
-         type: f.name.endsWith('.pdf') ? 'pdf' : 'image',
+         type: f.name.toLowerCase().endsWith('.pdf') ? 'pdf' : 'image',
          path: 'locker/' + f.name
       }));
       setFiles(fileList);
@@ -57,16 +58,35 @@ const Locker = () => {
     reader.readAsDataURL(file);
   };
 
-  const openFileAction = async (file) => {
+  const handlePreview = async (file) => {
+      if(file.type === 'pdf') {
+          openExternal(file);
+          return;
+      }
+
       try {
-          // Get the URI of the file
+          const content = await Filesystem.readFile({
+              path: file.path,
+              directory: Directory.Data
+          });
+          setViewingFile({
+              name: file.name,
+              data: content.data,
+              type: 'image'
+          });
+      } catch(e) {
+          console.error(e);
+          alert("Could not load image preview.");
+      }
+  };
+
+  const openExternal = async (file) => {
+      try {
           const uriResult = await Filesystem.getUri({
               path: file.path,
               directory: Directory.Data
           });
 
-          // Use Capacitor Share to open/share the file
-          // This delegates the "Viewing" to the System (PDF Viewer, Gallery, etc.)
           await Share.share({
               title: file.name,
               text: `Viewing ${file.name}`,
@@ -114,12 +134,19 @@ const Locker = () => {
                         <div className="w-10 h-10 bg-indigo-50 dark:bg-indigo-900/50 rounded-lg flex items-center justify-center text-indigo-600">
                             {f.type === 'pdf' ? <FileText size={20}/> : <Image size={20}/>}
                         </div>
-                        <div className="truncate font-bold text-sm dark:text-white w-40">{f.name}</div>
+                        <div className="truncate font-bold text-sm dark:text-white w-32 sm:w-60">{f.name}</div>
                    </div>
                    <div className="flex gap-2">
-                       <button onClick={() => openFileAction(f)} className="px-3 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-lg flex items-center gap-2 text-xs font-bold">
-                           <ExternalLink size={16}/> Open
-                       </button>
+                       {f.type === 'image' && (
+                           <button onClick={() => handlePreview(f)} className="px-3 py-2 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-lg flex items-center gap-2 text-xs font-bold">
+                               <Eye size={16}/> View
+                           </button>
+                       )}
+                       {f.type === 'pdf' && (
+                           <button onClick={() => openExternal(f)} className="px-3 py-2 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-lg flex items-center gap-2 text-xs font-bold">
+                               <ExternalLink size={16}/> Open
+                           </button>
+                       )}
                        <button onClick={() => deleteFile(f)} className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"><Trash2 size={18}/></button>
                    </div>
                </div>
@@ -127,6 +154,26 @@ const Locker = () => {
 
            {files.length === 0 && <div className="text-center text-slate-400 text-sm mt-4">No files stored.</div>}
        </div>
+
+       {/* Image Preview Modal */}
+       {viewingFile && (
+           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 animate-in fade-in duration-200">
+               <div className="relative max-w-full max-h-full">
+                   <button
+                       onClick={() => setViewingFile(null)}
+                       className="absolute -top-12 right-0 p-2 text-white bg-slate-800 rounded-full hover:bg-slate-700 transition"
+                   >
+                       <X size={24} />
+                   </button>
+                   <img
+                       src={`data:image/jpeg;base64,${viewingFile.data}`}
+                       className="max-w-full max-h-[80vh] rounded-lg shadow-2xl"
+                       alt="Preview"
+                   />
+                   <div className="text-center text-white mt-4 font-bold">{viewingFile.name}</div>
+               </div>
+           </div>
+       )}
     </div>
   );
 };

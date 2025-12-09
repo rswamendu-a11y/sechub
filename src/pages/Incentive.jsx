@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { Settings, Trash2, PlusCircle, Save, RotateCcw, Download } from 'lucide-react';
+import { Settings, Trash2, PlusCircle, Save, RotateCcw, Download, ChevronRight, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { jsPDF } from 'jspdf';
-import 'jspdf-autotable';
-import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
 const Incentive = () => {
@@ -145,7 +143,7 @@ const Incentive = () => {
     }
   };
 
-  // Config Updater
+  // --- CONFIG HANDLERS ---
   const updateConfig = (path, val) => {
       const newConfig = JSON.parse(JSON.stringify(incConfig));
       const parts = path.split('.');
@@ -157,8 +155,34 @@ const Incentive = () => {
       setIncConfig(newConfig);
   };
 
+  const addConfigItem = (path, template) => {
+      const newConfig = JSON.parse(JSON.stringify(incConfig));
+      const parts = path.split('.');
+      let obj = newConfig;
+      for (let i = 0; i < parts.length; i++) {
+          obj = obj[parts[i]];
+      }
+      if(Array.isArray(obj)) {
+          obj.push(template);
+          setIncConfig(newConfig);
+      }
+  };
+
+  const removeConfigItem = (path, index) => {
+      const newConfig = JSON.parse(JSON.stringify(incConfig));
+      const parts = path.split('.');
+      let obj = newConfig;
+      for (let i = 0; i < parts.length; i++) {
+          obj = obj[parts[i]];
+      }
+      if(Array.isArray(obj)) {
+          obj.splice(index, 1);
+          setIncConfig(newConfig);
+      }
+  };
+
   const ConfigSection = () => (
-    <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-lg mb-24">
+    <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-lg mb-24 h-full flex flex-col">
        <div className="flex justify-between items-center mb-4">
          <h3 className="font-bold text-lg dark:text-white">Configuration</h3>
          <div className="flex gap-2">
@@ -167,68 +191,229 @@ const Incentive = () => {
          </div>
        </div>
 
-       <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700 mb-4 overflow-x-auto">
-         {['SP','TB','WR','CP','NPC','Misc'].map(t => (
-             <button key={t} onClick={() => setActiveTab(t)} className={`px-4 py-2 font-bold text-sm ${activeTab===t ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400'}`}>{t}</button>
+       <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700 mb-4 overflow-x-auto no-scrollbar shrink-0">
+         {['SP','TB','WR','CP','NPC','Bun','Acc','Misc'].map(t => (
+             <button key={t} onClick={() => setActiveTab(t)} className={`px-4 py-2 font-bold text-sm whitespace-nowrap ${activeTab===t ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400'}`}>{t}</button>
          ))}
        </div>
 
-       <div className="h-[60vh] overflow-y-auto pb-12 space-y-4">
+       <div className="flex-1 overflow-y-auto pb-12 space-y-4">
         {activeTab === 'SP' && (
             <>
                 <div>
-                    <h4 className="font-bold text-sm text-blue-600 mb-2">Slabs</h4>
+                    <div className="flex justify-between items-center mb-2">
+                        <h4 className="font-bold text-sm text-blue-600">Slabs</h4>
+                        <button onClick={() => addConfigItem('sp.slabs', {min:0, rate:0, label:'New'})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                    </div>
                     {incConfig.sp.slabs.map((s, i) => (
-                        <div key={i} className="flex gap-2 mb-2">
+                        <div key={i} className="flex gap-2 mb-2 items-center">
                             <input placeholder="Min" type="number" value={s.min} onChange={(e)=>updateConfig(`sp.slabs.${i}.min`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
                             <input placeholder="Rate" type="number" value={s.rate} onChange={(e)=>updateConfig(`sp.slabs.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
                             <input placeholder="Label" value={s.label} onChange={(e)=>updateConfig(`sp.slabs.${i}.label`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
+                            <button onClick={() => removeConfigItem('sp.slabs', i)} className="text-red-400"><Trash2 size={14}/></button>
                         </div>
                     ))}
                 </div>
                 <div>
                     <h4 className="font-bold text-sm text-blue-600 mb-2">Gates (Multiplier)</h4>
-                    <div className="text-xs font-bold mb-1">Standard</div>
+                    <div className="flex justify-between items-center mb-1">
+                        <div className="text-xs font-bold dark:text-slate-300">Standard</div>
+                        <button onClick={() => addConfigItem('sp.gates.std', {min:0, p:1.0})} className="text-emerald-500"><PlusCircle size={14}/></button>
+                    </div>
                     {incConfig.sp.gates.std.map((g, i) => (
-                         <div key={'g'+i} className="flex gap-2 mb-1">
-                             <span className="text-xs p-2">Min {g.min}u</span>
-                             <input type="number" value={g.p} onChange={(e)=>updateConfig(`sp.gates.std.${i}.p`, e.target.value)} className="w-20 p-2 border rounded text-xs" />
+                         <div key={'g'+i} className="flex gap-2 mb-1 items-center">
+                             <span className="text-xs dark:text-slate-400">Min</span>
+                             <input type="number" value={g.min} onChange={(e)=>updateConfig(`sp.gates.std.${i}.min`, e.target.value)} className="w-16 p-2 border rounded text-xs" />
+                             <span className="text-xs dark:text-slate-400">Mult</span>
+                             <input type="number" value={g.p} onChange={(e)=>updateConfig(`sp.gates.std.${i}.p`, e.target.value)} className="w-16 p-2 border rounded text-xs" />
+                             <button onClick={() => removeConfigItem('sp.gates.std', i)} className="text-red-400 ml-auto"><Trash2 size={14}/></button>
                          </div>
                     ))}
+
+                    <div className="flex justify-between items-center mb-1 mt-3">
+                        <div className="text-xs font-bold dark:text-slate-300">SIS/Pro/New</div>
+                        <button onClick={() => addConfigItem('sp.gates.sis', {min:0, p:1.0})} className="text-emerald-500"><PlusCircle size={14}/></button>
+                    </div>
+                    {incConfig.sp.gates.sis.map((g, i) => (
+                         <div key={'s'+i} className="flex gap-2 mb-1 items-center">
+                             <span className="text-xs dark:text-slate-400">Min</span>
+                             <input type="number" value={g.min} onChange={(e)=>updateConfig(`sp.gates.sis.${i}.min`, e.target.value)} className="w-16 p-2 border rounded text-xs" />
+                             <span className="text-xs dark:text-slate-400">Mult</span>
+                             <input type="number" value={g.p} onChange={(e)=>updateConfig(`sp.gates.sis.${i}.p`, e.target.value)} className="w-16 p-2 border rounded text-xs" />
+                             <button onClick={() => removeConfigItem('sp.gates.sis', i)} className="text-red-400 ml-auto"><Trash2 size={14}/></button>
+                         </div>
+                    ))}
+                </div>
+                <div>
+                     <h4 className="font-bold text-sm text-blue-600 mb-2">Params</h4>
+                     <div className="flex gap-2 mb-2 items-center">
+                        <label className="text-xs w-1/2">Focus Multiplier</label>
+                        <input type="number" value={incConfig.sp.fm_mult} onChange={(e)=>updateConfig('sp.fm_mult', e.target.value)} className="w-20 p-2 border rounded text-xs" />
+                     </div>
+                     <div className="flex gap-2 mb-2 items-center">
+                        <label className="text-xs w-1/2">Target Threshold</label>
+                        <input type="number" value={incConfig.sp.target_thresh} onChange={(e)=>updateConfig('sp.target_thresh', e.target.value)} className="w-20 p-2 border rounded text-xs" />
+                     </div>
                 </div>
             </>
         )}
 
         {activeTab === 'TB' && (
             <>
+                <div className="flex justify-between items-center mb-2">
+                    <h4 className="font-bold text-sm text-blue-600">Volume Slabs</h4>
+                    <button onClick={() => addConfigItem('tb.slabs', {min:0, rate:0, label:'New'})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                </div>
                 {incConfig.tb.slabs.map((s, i) => (
-                    <div key={i} className="flex gap-2 mb-2">
-                         <input type="number" value={s.min} onChange={(e)=>updateConfig(`tb.slabs.${i}.min`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
-                         <input type="number" value={s.rate} onChange={(e)=>updateConfig(`tb.slabs.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
+                    <div key={i} className="flex gap-2 mb-2 items-center">
+                         <input type="number" value={s.min} onChange={(e)=>updateConfig(`tb.slabs.${i}.min`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" placeholder="Min" />
+                         <input type="number" value={s.rate} onChange={(e)=>updateConfig(`tb.slabs.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" placeholder="Rate" />
+                         <input value={s.label} onChange={(e)=>updateConfig(`tb.slabs.${i}.label`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" placeholder="Label" />
+                         <button onClick={() => removeConfigItem('tb.slabs', i)} className="text-red-400"><Trash2 size={14}/></button>
                     </div>
                 ))}
-                <h4 className="font-bold text-sm text-blue-600 mt-4 mb-2">Focus Models</h4>
+
+                <div className="flex justify-between items-center mt-4 mb-2">
+                    <h4 className="font-bold text-sm text-blue-600">Focus Models</h4>
+                    <button onClick={() => addConfigItem('tb.focus', {name:'New Model', rate:0, keys:''})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                </div>
                 {incConfig.tb.focus.map((f, i) => (
-                    <div key={i} className="flex gap-2 mb-2">
-                        <input value={f.name} onChange={(e)=>updateConfig(`tb.focus.${i}.name`, e.target.value)} className="w-1/2 p-2 border rounded text-xs" />
-                        <input type="number" value={f.rate} onChange={(e)=>updateConfig(`tb.focus.${i}.rate`, e.target.value)} className="w-1/4 p-2 border rounded text-xs" />
+                    <div key={i} className="flex gap-2 mb-2 items-center">
+                        <input value={f.name} onChange={(e)=>updateConfig(`tb.focus.${i}.name`, e.target.value)} className="w-1/2 p-2 border rounded text-xs" placeholder="Model Name" />
+                        <input type="number" value={f.rate} onChange={(e)=>updateConfig(`tb.focus.${i}.rate`, e.target.value)} className="w-1/4 p-2 border rounded text-xs" placeholder="Rate" />
+                        <button onClick={() => removeConfigItem('tb.focus', i)} className="text-red-400"><Trash2 size={14}/></button>
                     </div>
                 ))}
             </>
         )}
 
-        {activeTab === 'WR' && incConfig.wr.map((w, i) => (
-            <div key={i} className="flex gap-2 mb-2">
-                <input value={w.name} onChange={(e)=>updateConfig(`wr.${i}.name`, e.target.value)} className="w-2/3 p-2 border rounded text-xs" />
-                <input type="number" value={w.rate} onChange={(e)=>updateConfig(`wr.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
-            </div>
-        ))}
+        {activeTab === 'WR' && (
+            <>
+                <div className="flex justify-between items-center mb-2">
+                    <h4 className="font-bold text-sm text-blue-600">Wearables</h4>
+                    <button onClick={() => addConfigItem('wr', {name:'New Item', rate:0, keys:''})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                </div>
+                {incConfig.wr.map((w, i) => (
+                    <div key={i} className="flex gap-2 mb-2 items-center">
+                        <input value={w.name} onChange={(e)=>updateConfig(`wr.${i}.name`, e.target.value)} className="w-2/3 p-2 border rounded text-xs" />
+                        <input type="number" value={w.rate} onChange={(e)=>updateConfig(`wr.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
+                        <button onClick={() => removeConfigItem('wr', i)} className="text-red-400"><Trash2 size={14}/></button>
+                    </div>
+                ))}
+            </>
+        )}
+
+        {activeTab === 'CP' && (
+            <>
+                <div className="flex justify-between items-center mb-2">
+                    <h4 className="font-bold text-sm text-blue-600">Slabs</h4>
+                    <button onClick={() => addConfigItem('cp.slabs', {min:0, rate:0, label:'New'})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                </div>
+                {incConfig.cp.slabs.map((s, i) => (
+                    <div key={i} className="flex gap-2 mb-2 items-center">
+                         <input type="number" value={s.min} onChange={(e)=>updateConfig(`cp.slabs.${i}.min`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" placeholder="Min" />
+                         <input type="number" value={s.rate} onChange={(e)=>updateConfig(`cp.slabs.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" placeholder="Rate" />
+                         <input value={s.label} onChange={(e)=>updateConfig(`cp.slabs.${i}.label`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" placeholder="Label" />
+                         <button onClick={() => removeConfigItem('cp.slabs', i)} className="text-red-400"><Trash2 size={14}/></button>
+                    </div>
+                ))}
+
+                <h4 className="font-bold text-sm text-blue-600 mt-4 mb-2">Kickers</h4>
+                <div className="mb-4">
+                    <h5 className="text-xs font-bold dark:text-slate-300">Flip/Fold 7 (S25)</h5>
+                    <div className="flex gap-2 mt-1">
+                        <label className="text-xs w-20">Low Tier</label>
+                        <input type="number" value={incConfig.cp.kickers.ff7.l} onChange={(e)=>updateConfig('cp.kickers.ff7.l', e.target.value)} className="w-20 p-2 border rounded text-xs" />
+                    </div>
+                    <div className="flex gap-2 mt-1">
+                        <label className="text-xs w-20">High Tier</label>
+                        <input type="number" value={incConfig.cp.kickers.ff7.h} onChange={(e)=>updateConfig('cp.kickers.ff7.h', e.target.value)} className="w-20 p-2 border rounded text-xs" />
+                    </div>
+                </div>
+                <div>
+                    <h5 className="text-xs font-bold dark:text-slate-300">S25 / Flagship</h5>
+                    <div className="flex gap-2 mt-1">
+                        <label className="text-xs w-20">Low Tier</label>
+                        <input type="number" value={incConfig.cp.kickers.s25.l} onChange={(e)=>updateConfig('cp.kickers.s25.l', e.target.value)} className="w-20 p-2 border rounded text-xs" />
+                    </div>
+                    <div className="flex gap-2 mt-1">
+                        <label className="text-xs w-20">High Tier</label>
+                        <input type="number" value={incConfig.cp.kickers.s25.h} onChange={(e)=>updateConfig('cp.kickers.s25.h', e.target.value)} className="w-20 p-2 border rounded text-xs" />
+                    </div>
+                </div>
+            </>
+        )}
+
+        {activeTab === 'NPC' && (
+            <>
+                <div className="flex justify-between items-center mb-2">
+                    <h4 className="font-bold text-sm text-blue-600">Model Rates</h4>
+                    <button onClick={() => addConfigItem('npc', {name:'New', rate:0})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                </div>
+                {incConfig.npc.map((n, i) => (
+                    <div key={i} className="flex gap-2 mb-2 items-center">
+                        <input value={n.name} onChange={(e)=>updateConfig(`npc.${i}.name`, e.target.value)} className="w-2/3 p-2 border rounded text-xs" />
+                        <input type="number" value={n.rate} onChange={(e)=>updateConfig(`npc.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
+                        <button onClick={() => removeConfigItem('npc', i)} className="text-red-400"><Trash2 size={14}/></button>
+                    </div>
+                ))}
+            </>
+        )}
+
+        {activeTab === 'Bun' && (
+            <>
+                <div className="flex justify-between items-center mb-2">
+                    <h4 className="font-bold text-sm text-blue-600">Standard Rates</h4>
+                    <button onClick={() => addConfigItem('bun.std', {name:'Bundle', rate:0})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                </div>
+                {incConfig.bun.std.map((b, i) => (
+                    <div key={i} className="flex gap-2 mb-2 items-center">
+                        <input value={b.name} onChange={(e)=>updateConfig(`bun.std.${i}.name`, e.target.value)} className="w-2/3 p-2 border rounded text-xs" />
+                        <input type="number" value={b.rate} onChange={(e)=>updateConfig(`bun.std.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
+                        <button onClick={() => removeConfigItem('bun.std', i)} className="text-red-400"><Trash2 size={14}/></button>
+                    </div>
+                ))}
+
+                <div className="flex justify-between items-center mt-4 mb-2">
+                    <h4 className="font-bold text-sm text-blue-600">Exclusive Rates</h4>
+                    <button onClick={() => addConfigItem('bun.excl', {name:'Bundle', rate:0})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                </div>
+                {incConfig.bun.excl.map((b, i) => (
+                    <div key={i} className="flex gap-2 mb-2 items-center">
+                        <input value={b.name} onChange={(e)=>updateConfig(`bun.excl.${i}.name`, e.target.value)} className="w-2/3 p-2 border rounded text-xs" />
+                        <input type="number" value={b.rate} onChange={(e)=>updateConfig(`bun.excl.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
+                        <button onClick={() => removeConfigItem('bun.excl', i)} className="text-red-400"><Trash2 size={14}/></button>
+                    </div>
+                ))}
+            </>
+        )}
+
+        {activeTab === 'Acc' && (
+            <>
+                <div className="flex justify-between items-center mb-2">
+                    <h4 className="font-bold text-sm text-blue-600">Accessory Attach Rates</h4>
+                    <button onClick={() => addConfigItem('acc', {min:0, rate:0})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                </div>
+                {incConfig.acc.map((a, i) => (
+                    <div key={i} className="flex gap-2 mb-2 items-center">
+                        <span className="text-xs w-20 dark:text-slate-400">Min %</span>
+                        <input type="number" value={a.min} onChange={(e)=>updateConfig(`acc.${i}.min`, e.target.value)} className="w-20 p-2 border rounded text-xs" placeholder="Min" />
+                        <input type="number" value={a.rate} onChange={(e)=>updateConfig(`acc.${i}.rate`, e.target.value)} className="flex-1 p-2 border rounded text-xs" placeholder="Rate" />
+                        <button onClick={() => removeConfigItem('acc', i)} className="text-red-400"><Trash2 size={14}/></button>
+                    </div>
+                ))}
+            </>
+        )}
 
         {activeTab === 'Misc' && (
-            <div className="space-y-2">
-                <div className="flex justify-between items-center"><label>Global Cap</label><input type="number" value={incConfig.caps.global} onChange={(e)=>updateConfig('caps.global', e.target.value)} className="border p-1 w-24"/></div>
-                <div className="flex justify-between items-center"><label>TB Cap</label><input type="number" value={incConfig.caps.tb} onChange={(e)=>updateConfig('caps.tb', e.target.value)} className="border p-1 w-24"/></div>
-                <div className="flex justify-between items-center"><label>NPC Cap</label><input type="number" value={incConfig.caps.npc} onChange={(e)=>updateConfig('caps.npc', e.target.value)} className="border p-1 w-24"/></div>
+            <div className="space-y-4">
+                <div>
+                     <h4 className="font-bold text-sm text-blue-600 mb-2">Payout Caps</h4>
+                     <div className="flex justify-between items-center mb-2"><label className="text-xs dark:text-slate-300">Global Cap</label><input type="number" value={incConfig.caps.global} onChange={(e)=>updateConfig('caps.global', e.target.value)} className="border p-1 w-24 text-xs rounded"/></div>
+                     <div className="flex justify-between items-center mb-2"><label className="text-xs dark:text-slate-300">Tablet Cap</label><input type="number" value={incConfig.caps.tb} onChange={(e)=>updateConfig('caps.tb', e.target.value)} className="border p-1 w-24 text-xs rounded"/></div>
+                     <div className="flex justify-between items-center mb-2"><label className="text-xs dark:text-slate-300">Note PC Cap</label><input type="number" value={incConfig.caps.npc} onChange={(e)=>updateConfig('caps.npc', e.target.value)} className="border p-1 w-24 text-xs rounded"/></div>
+                     <div className="flex justify-between items-center mb-2"><label className="text-xs dark:text-slate-300">Bundle Cap</label><input type="number" value={incConfig.caps.bun} onChange={(e)=>updateConfig('caps.bun', e.target.value)} className="border p-1 w-24 text-xs rounded"/></div>
+                </div>
             </div>
         )}
        </div>
