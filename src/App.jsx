@@ -4,7 +4,6 @@ import { Moon, Sun, BarChart2, Calculator, Folder, User } from 'lucide-react';
 import Tracker from './pages/Tracker';
 import Analytics from './pages/Analytics';
 import Incentive from './pages/Incentive';
-import Locker from './pages/Locker';
 import Settings from './pages/Settings';
 
 const App = () => {
@@ -87,7 +86,6 @@ const App = () => {
             {view === 'tracker' && <Tracker />}
             {view === 'analytics' && <Analytics />}
             {view === 'incentive' && <Incentive />}
-            {view === 'locker' && <Locker />}
             {view === 'settings' && <Settings />}
         </main>
 
@@ -97,7 +95,6 @@ const App = () => {
                 <NavBtn target="tracker" icon={BarChart2} label="Tracker" />
                 <NavBtn target="analytics" icon={(props)=><BarChart2 {...props} className="rotate-90"/>} label="Analytics" />
                 <NavBtn target="incentive" icon={Calculator} label="Incentive" />
-                <NavBtn target="locker" icon={Folder} label="Locker" />
                 <NavBtn target="settings" icon={User} label="Profile" />
             </div>
         </nav>

@@ -131,28 +131,82 @@ const Analytics = () => {
       doc.setFontSize(10);
       doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 28);
 
-      // Data Prep
-      const tableData = BRANDS.map(b => {
-          const vols = chartData.datasets.find(d => d.label === b.l)?.data || [0,0,0,0];
-          const totalVol = vols.reduce((a,c)=>a+c, 0);
-          return [b.l, ...vols, totalVol];
+      // Calculation Logic (Independent of View)
+      const volData = {};
+      const valData = {};
+      BRANDS.forEach(b => {
+          volData[b.k] = [0, 0, 0, 0];
+          valData[b.k] = [0, 0, 0, 0];
       });
 
-      // If metric is value, we might want to show value too, but prompt asked for "Volume value must be mentioned"
-      // I will interpret this as showing the Volume numbers in the table.
-      // The current chartData toggles based on 'metric'.
-      // To ensure we export Volume, we should re-calculate or assume user is on Volume tab.
-      // Better: Export what is currently viewed, but if it is Value, ensure we clarify.
-      // Re-reading: "Only table but volume value must be mentioned." -> Implies Volume is key.
+      Object.keys(sales).forEach(dateStr => {
+          const d = new Date(dateStr);
+          const currentMonth = new Date().getMonth();
+          const currentYear = new Date().getFullYear();
 
-      const head = [['Brand', 'Week 1', 'Week 2', 'Week 3', 'Week 4', 'Total ' + (metric === 'volume' ? '(Qty)' : '(Val)')]];
+          if(d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
+             const day = d.getDate();
+             let bucketIdx = 0;
+             if (day >= 1 && day <= 7) bucketIdx = 0;
+             else if (day >= 8 && day <= 14) bucketIdx = 1;
+             else if (day >= 15 && day <= 21) bucketIdx = 2;
+             else bucketIdx = 3;
+
+             const entry = sales[dateStr];
+             if (entry.entries) {
+                 entry.entries.forEach(e => {
+                     const k = e.brand;
+                     if (volData[k]) {
+                         volData[k][bucketIdx] += e.qty || 0;
+                         valData[k][bucketIdx] += e.total || 0;
+                     }
+                 });
+             } else {
+                  // Fallback for legacy data structure
+                  BRANDS.forEach(b => {
+                      const k = b.k;
+                      if (volData[k]) {
+                          volData[k][bucketIdx] += entry[k] || 0;
+                          valData[k][bucketIdx] += entry[k+'Val'] || 0;
+                      }
+                  });
+             }
+          }
+      });
+
+      // Table 1: Volume
+      const volTableBody = BRANDS.map(b => {
+          const row = volData[b.k];
+          const total = row.reduce((a,c) => a+c, 0);
+          return [b.l, ...row, total];
+      });
+
+      doc.text("Volume (Units)", 14, 35);
+      doc.autoTable({
+          startY: 40,
+          head: [['Brand', 'Week 1', 'Week 2', 'Week 3', 'Week 4', 'Total Qty']],
+          body: volTableBody,
+          theme: 'grid',
+          headStyles: { fillColor: [79, 70, 229] },
+      });
+
+      // Table 2: Value
+      const valTableBody = BRANDS.map(b => {
+          const row = valData[b.k];
+          const total = row.reduce((a,c) => a+c, 0);
+          // Format numbers for value
+          return [b.l, ...row.map(v => v.toLocaleString()), total.toLocaleString()];
+      });
+
+      const finalY = doc.lastAutoTable.finalY || 40;
+      doc.text("Value (INR)", 14, finalY + 10);
 
       doc.autoTable({
-          startY: 35,
-          head: head,
-          body: tableData,
+          startY: finalY + 15,
+          head: [['Brand', 'Week 1', 'Week 2', 'Week 3', 'Week 4', 'Total Val']],
+          body: valTableBody,
           theme: 'grid',
-          headStyles: { fillColor: [79, 70, 229] }, // Indigo
+          headStyles: { fillColor: [16, 185, 129] }, // Emerald
       });
 
       const fileName = `Performance_${Date.now()}.pdf`;
