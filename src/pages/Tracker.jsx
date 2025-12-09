@@ -259,6 +259,57 @@ const Tracker = () => {
 
                   <input type="month" value={mtdMonth} onChange={(e) => setMtdMonth(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl mb-4 font-bold dark:text-white" />
 
+                  <div className="flex justify-end mb-4">
+                      <button
+                          onClick={async () => {
+                              const data = [];
+                              Object.keys(sales).forEach(d => {
+                                  if(d.startsWith(mtdMonth)) {
+                                      const day = sales[d];
+                                      if(day.entries) {
+                                          day.entries.forEach(e => {
+                                              data.push({
+                                                  Date: d,
+                                                  Brand: e.brand,
+                                                  Model: e.model,
+                                                  Variant: e.variant,
+                                                  Qty: e.qty,
+                                                  Price: e.price,
+                                                  Total: e.total,
+                                                  Time: new Date(e.timestamp).toLocaleTimeString()
+                                              });
+                                          });
+                                      }
+                                  }
+                              });
+
+                              if(data.length === 0) return alert("No data to export for this month.");
+
+                              const wb = XLSX.utils.book_new();
+                              const ws = XLSX.utils.json_to_sheet(data);
+                              XLSX.utils.book_append_sheet(wb, ws, "MTD Sales");
+
+                              const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+                              const fileName = `MTD_Sales_${mtdMonth}.xlsx`;
+
+                              try {
+                                  await Filesystem.writeFile({
+                                      path: fileName,
+                                      data: wbout,
+                                      directory: Directory.Cache
+                                  });
+                                  const uriResult = await Filesystem.getUri({ path: fileName, directory: Directory.Cache });
+                                  await Share.share({ title: 'Export MTD Sales', url: uriResult.uri });
+                              } catch(e) {
+                                  alert("Export Error: " + e.message);
+                              }
+                          }}
+                          className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/20 transition-all"
+                      >
+                          <Download size={18} /> Export MTD Excel
+                      </button>
+                  </div>
+
                   <div className="max-h-[60vh] overflow-y-auto">
                       <table className="w-full text-sm text-left">
                           <thead className="text-xs text-slate-500 uppercase bg-slate-50 dark:bg-slate-800">

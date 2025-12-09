@@ -94,6 +94,35 @@ const Analytics = () => {
     }
   };
 
+  const priceBrackets = useMemo(() => {
+    // 100K+, 70-100k, 40-70k, 30-40k, 20-30k, 15-20k, 10-15k, <10k
+    const brackets = [0, 0, 0, 0, 0, 0, 0, 0];
+
+    Object.keys(sales).forEach(dateStr => {
+        const d = new Date(dateStr);
+        const currentMonth = new Date().getMonth();
+        const currentYear = new Date().getFullYear();
+
+        if(d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
+            const entry = sales[dateStr];
+            if (entry.entries) {
+                entry.entries.forEach(e => {
+                    const price = e.price || 0;
+                    if (price >= 100000) brackets[0]++;
+                    else if (price >= 70000) brackets[1]++;
+                    else if (price >= 40000) brackets[2]++;
+                    else if (price >= 30000) brackets[3]++;
+                    else if (price >= 20000) brackets[4]++;
+                    else if (price >= 15000) brackets[5]++;
+                    else if (price >= 10000) brackets[6]++;
+                    else brackets[7]++;
+                });
+            }
+        }
+    });
+    return brackets;
+  }, [sales]);
+
   const handleExportPDF = async () => {
       const doc = new jsPDF();
       doc.setFontSize(16);
@@ -175,6 +204,43 @@ const Analytics = () => {
 
        <div className="bg-white dark:bg-slate-800 p-4 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 h-[500px]">
           <Bar data={chartData} options={options} />
+       </div>
+
+       {/* Price Bracket Table */}
+       <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
+            <div className="p-4 bg-red-800 text-white font-bold text-center border-b border-red-900">
+                Dealer Price (Range) – INR
+            </div>
+            <div className="overflow-x-auto">
+                <table className="w-full text-center text-sm">
+                    <thead className="bg-red-700 text-white text-xs uppercase font-bold">
+                        <tr>
+                            <th className="p-3 border-r border-red-600">Category</th>
+                            <th className="p-3 border-r border-red-600">100K & above</th>
+                            <th className="p-3 border-r border-red-600">70k - &lt;100K</th>
+                            <th className="p-3 border-r border-red-600">40k - &lt;70K</th>
+                            <th className="p-3 border-r border-red-600">30 - &lt;40k</th>
+                            <th className="p-3 border-r border-red-600">20 - &lt;30</th>
+                            <th className="p-3 border-r border-red-600">15 - &lt;20k</th>
+                            <th className="p-3 border-r border-red-600">10 - &lt;15k</th>
+                            <th className="p-3">&lt;10K</th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                        <tr className="dark:text-white font-bold">
+                            <td className="p-4 text-left border-r border-slate-100 dark:border-slate-700">Mobile Phones</td>
+                            <td className="p-4 border-r border-slate-100 dark:border-slate-700">{priceBrackets[0]}</td>
+                            <td className="p-4 border-r border-slate-100 dark:border-slate-700">{priceBrackets[1]}</td>
+                            <td className="p-4 border-r border-slate-100 dark:border-slate-700">{priceBrackets[2]}</td>
+                            <td className="p-4 border-r border-slate-100 dark:border-slate-700">{priceBrackets[3]}</td>
+                            <td className="p-4 border-r border-slate-100 dark:border-slate-700">{priceBrackets[4]}</td>
+                            <td className="p-4 border-r border-slate-100 dark:border-slate-700">{priceBrackets[5]}</td>
+                            <td className="p-4 border-r border-slate-100 dark:border-slate-700">{priceBrackets[6]}</td>
+                            <td className="p-4">{priceBrackets[7]}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
        </div>
     </div>
   );
