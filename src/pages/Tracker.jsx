@@ -1,6 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { PlusCircle, ShoppingCart, Trash2, Calendar, Edit2, BarChart2, X, Check } from 'lucide-react';
+import { PlusCircle, ShoppingCart, Trash2, Calendar, Edit2, BarChart2, X, Check, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 
 const BRANDS = [
   { k: 'samsung', l: 'Samsung', c: 'bg-blue-500' },
@@ -115,6 +118,41 @@ const Tracker = () => {
       return stats;
   }, [sales, mtdMonth, showMtd]);
 
+  const handleExport = async () => {
+    // Flatten data for export
+    const data = entries.map(e => ({
+        Date: date,
+        Brand: e.brand,
+        Model: e.model,
+        Variant: e.variant,
+        Qty: e.qty,
+        Price: e.price,
+        Total: e.total,
+        Time: new Date(e.timestamp).toLocaleTimeString()
+    }));
+
+    if(data.length === 0) return alert("No data to export for this date.");
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(data);
+    XLSX.utils.book_append_sheet(wb, ws, "Sales Log");
+
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+    const fileName = `Sales_${date}.xlsx`;
+
+    try {
+        await Filesystem.writeFile({
+            path: fileName,
+            data: wbout,
+            directory: Directory.Cache
+        });
+        const uriResult = await Filesystem.getUri({ path: fileName, directory: Directory.Cache });
+        await Share.share({ title: 'Export Sales', url: uriResult.uri });
+    } catch(e) {
+        alert("Export Error: " + e.message);
+    }
+  };
+
   return (
     <div className="fade-in space-y-6 pb-24">
       {/* Date Header */}
@@ -129,6 +167,7 @@ const Tracker = () => {
           />
         </div>
         <div className="flex gap-2">
+            <button onClick={handleExport} className="p-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-lg"><Download size={20}/></button>
             <button onClick={() => setShowMtd(true)} className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 rounded-lg"><BarChart2 size={20}/></button>
             <button onClick={() => { if(confirm("Clear Date?")) clearDate(date); }} className="p-2 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-lg"><Trash2 size={20}/></button>
         </div>

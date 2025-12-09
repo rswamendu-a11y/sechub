@@ -2,8 +2,6 @@ name: Build Android APK
 
 on:
   push:
-    branches:
-      - '**'
   workflow_dispatch:
 
 jobs:
@@ -29,6 +27,9 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '17'
+
+      - name: Make Gradlew Executable
+        run: chmod +x android/gradlew
 
       - name: Sync Capacitor
         run: npx cap sync android

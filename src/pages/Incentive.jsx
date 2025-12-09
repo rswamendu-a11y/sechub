@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { Settings, Calculator, Trash2, PlusCircle, Save, RotateCcw } from 'lucide-react';
+import { Settings, Trash2, PlusCircle, Save, RotateCcw, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { jsPDF } from 'jspdf';
 import 'jspdf-autotable';
+import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
+import { Share } from '@capacitor/share';
 
 const Incentive = () => {
   const { incConfig, setIncConfig, resetIncConfig, profile } = useAppStore();
@@ -49,7 +51,6 @@ const Incentive = () => {
 
   const calculate = () => {
       const c = incConfig;
-      // ... (The heavy logic ported from vanilla JS)
       let logs = [];
       let spQ=0, spRaw=0;
       rows.sp.forEach(r => {
@@ -98,11 +99,7 @@ const Incentive = () => {
       let npcFin = Math.min(npcTot, c.caps.npc);
       logs.push({c:"Note PC", n:npcTot>npcFin?"Capped":"", v:npcFin});
 
-      // Bundles & Acc (simplified from DOM reading)
-      // For React, we'd need inputs bound to state. I'll add a simplified bundle/acc state.
-      // Assuming bundle logic uses the 'meta' or separate state.
-      // For now, I'll assume they are zero or implement a quick way to add them.
-      let bunTot = 0; // TODO: Add bundle inputs if needed, or rely on manual add
+      let bunTot = 0;
       let accTot = 0;
       const ab = meta.accBase || (spRaw * 25);
       if(ab > 0 && meta.channel!=='exclusive') {
@@ -113,6 +110,39 @@ const Incentive = () => {
 
       let grand = comb + tbFin + npcFin + cpTot + bunTot + accTot;
       setResult({ logs, grand, spQ, ach: (ach*100).toFixed(0) });
+  };
+
+  const handleExport = async () => {
+    const wb = XLSX.utils.book_new();
+    const wsData = [
+        ["SEC Unified Incentive Report"],
+        ["Date", new Date().toLocaleString()],
+        ["Target", meta.target, "Achieved", result.spQ + ` (${result.ach}%)`],
+        [],
+        ["Category", "Details", "Payout"],
+        ...result.logs.map(l => [l.c, l.n, l.v]),
+        [],
+        ["GRAND TOTAL", "", result.grand]
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    XLSX.utils.book_append_sheet(wb, ws, "Report");
+
+    // Write
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+    const fileName = `Incentive_Report_${Date.now()}.xlsx`;
+
+    try {
+        await Filesystem.writeFile({
+            path: fileName,
+            data: wbout,
+            directory: Directory.Cache
+        });
+        const uriResult = await Filesystem.getUri({ path: fileName, directory: Directory.Cache });
+        await Share.share({ title: 'Export', url: uriResult.uri });
+    } catch(e) {
+        console.error(e);
+        alert("Export Error: " + e.message);
+    }
   };
 
   // Config Updater
@@ -138,25 +168,69 @@ const Incentive = () => {
        </div>
 
        <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700 mb-4 overflow-x-auto">
-         {['SP','TB','WR','CP','Misc'].map(t => (
+         {['SP','TB','WR','CP','NPC','Misc'].map(t => (
              <button key={t} onClick={() => setActiveTab(t)} className={`px-4 py-2 font-bold text-sm ${activeTab===t ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400'}`}>{t}</button>
          ))}
        </div>
 
-       <div className="h-[60vh] overflow-y-auto pb-12">
+       <div className="h-[60vh] overflow-y-auto pb-12 space-y-4">
         {activeTab === 'SP' && (
-            <div>
-                <h4 className="font-bold text-sm text-blue-600 mb-2">Slabs</h4>
-                {incConfig.sp.slabs.map((s, i) => (
+            <>
+                <div>
+                    <h4 className="font-bold text-sm text-blue-600 mb-2">Slabs</h4>
+                    {incConfig.sp.slabs.map((s, i) => (
+                        <div key={i} className="flex gap-2 mb-2">
+                            <input placeholder="Min" type="number" value={s.min} onChange={(e)=>updateConfig(`sp.slabs.${i}.min`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
+                            <input placeholder="Rate" type="number" value={s.rate} onChange={(e)=>updateConfig(`sp.slabs.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
+                            <input placeholder="Label" value={s.label} onChange={(e)=>updateConfig(`sp.slabs.${i}.label`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
+                        </div>
+                    ))}
+                </div>
+                <div>
+                    <h4 className="font-bold text-sm text-blue-600 mb-2">Gates (Multiplier)</h4>
+                    <div className="text-xs font-bold mb-1">Standard</div>
+                    {incConfig.sp.gates.std.map((g, i) => (
+                         <div key={'g'+i} className="flex gap-2 mb-1">
+                             <span className="text-xs p-2">Min {g.min}u</span>
+                             <input type="number" value={g.p} onChange={(e)=>updateConfig(`sp.gates.std.${i}.p`, e.target.value)} className="w-20 p-2 border rounded text-xs" />
+                         </div>
+                    ))}
+                </div>
+            </>
+        )}
+
+        {activeTab === 'TB' && (
+            <>
+                {incConfig.tb.slabs.map((s, i) => (
                     <div key={i} className="flex gap-2 mb-2">
-                        <input type="number" value={s.min} onChange={(e)=>updateConfig(`sp.slabs.${i}.min`, e.target.value)} className="w-1/2 p-2 border rounded text-xs" />
-                        <input type="number" value={s.rate} onChange={(e)=>updateConfig(`sp.slabs.${i}.rate`, e.target.value)} className="w-1/2 p-2 border rounded text-xs" />
+                         <input type="number" value={s.min} onChange={(e)=>updateConfig(`tb.slabs.${i}.min`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
+                         <input type="number" value={s.rate} onChange={(e)=>updateConfig(`tb.slabs.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
                     </div>
                 ))}
+                <h4 className="font-bold text-sm text-blue-600 mt-4 mb-2">Focus Models</h4>
+                {incConfig.tb.focus.map((f, i) => (
+                    <div key={i} className="flex gap-2 mb-2">
+                        <input value={f.name} onChange={(e)=>updateConfig(`tb.focus.${i}.name`, e.target.value)} className="w-1/2 p-2 border rounded text-xs" />
+                        <input type="number" value={f.rate} onChange={(e)=>updateConfig(`tb.focus.${i}.rate`, e.target.value)} className="w-1/4 p-2 border rounded text-xs" />
+                    </div>
+                ))}
+            </>
+        )}
+
+        {activeTab === 'WR' && incConfig.wr.map((w, i) => (
+            <div key={i} className="flex gap-2 mb-2">
+                <input value={w.name} onChange={(e)=>updateConfig(`wr.${i}.name`, e.target.value)} className="w-2/3 p-2 border rounded text-xs" />
+                <input type="number" value={w.rate} onChange={(e)=>updateConfig(`wr.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
+            </div>
+        ))}
+
+        {activeTab === 'Misc' && (
+            <div className="space-y-2">
+                <div className="flex justify-between items-center"><label>Global Cap</label><input type="number" value={incConfig.caps.global} onChange={(e)=>updateConfig('caps.global', e.target.value)} className="border p-1 w-24"/></div>
+                <div className="flex justify-between items-center"><label>TB Cap</label><input type="number" value={incConfig.caps.tb} onChange={(e)=>updateConfig('caps.tb', e.target.value)} className="border p-1 w-24"/></div>
+                <div className="flex justify-between items-center"><label>NPC Cap</label><input type="number" value={incConfig.caps.npc} onChange={(e)=>updateConfig('caps.npc', e.target.value)} className="border p-1 w-24"/></div>
             </div>
         )}
-        {/* Implement other tabs similarly if needed, or trust the user to just edit SP for now as MVP */}
-        {activeTab !== 'SP' && <div className="text-center text-slate-400 mt-10">Select SP to edit rates. Other tabs coming soon.</div>}
        </div>
     </div>
   );
@@ -169,7 +243,10 @@ const Incentive = () => {
         <div className="bg-white dark:bg-slate-800 p-4 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
             <div className="flex justify-between items-center mb-3">
                 <h2 className="font-bold dark:text-white">Incentive</h2>
-                <button onClick={() => setView('config')} className="text-xs bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-lg flex items-center gap-1"><Settings size={14} /> Config</button>
+                <div className="flex gap-2">
+                    <button onClick={handleExport} className="text-xs bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 px-3 py-1 rounded-lg flex items-center gap-1"><Download size={14} /> Export</button>
+                    <button onClick={() => setView('config')} className="text-xs bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-lg flex items-center gap-1"><Settings size={14} /> Config</button>
+                </div>
             </div>
             <div className="grid grid-cols-2 gap-3 text-xs">
                  <div><label className="font-bold text-slate-400 block">Target</label><input type="number" value={meta.target} onChange={(e)=>setMeta({...meta, target: e.target.value})} className="w-full bg-slate-50 dark:bg-slate-900 dark:text-white border-none rounded p-1"/></div>
@@ -177,7 +254,7 @@ const Incentive = () => {
             </div>
         </div>
 
-        {/* Categories */}
+        {/* Categories (Simplified for MVP, expanding on request) */}
         {/* SP */}
         <div className="bg-white dark:bg-slate-800 rounded-xl border-l-4 border-l-blue-600 shadow-sm p-3">
              <div className="flex justify-between items-center mb-2">
@@ -192,6 +269,26 @@ const Incentive = () => {
                      </select>
                      <input type="number" value={r.qty} onChange={(e)=>updRow('sp', i, 'qty', e.target.value)} className="w-14 text-center text-xs p-2 rounded border dark:bg-slate-900 dark:text-white" />
                      <button onClick={() => delRow('sp', i)} className="text-red-400"><Trash2 size={14}/></button>
+                 </div>
+             ))}
+        </div>
+
+        {/* Other Sections Placeholder (TB/WR) - just reusing logic for brevity if needed, but keeping simple for now */}
+        {/* TB */}
+        <div className="bg-white dark:bg-slate-800 rounded-xl border-l-4 border-l-purple-600 shadow-sm p-3">
+             <div className="flex justify-between items-center mb-2">
+                 <span className="font-bold text-sm dark:text-white">Tablets</span>
+                 <button onClick={() => addRow('tb')} className="text-xs bg-slate-100 p-1 rounded">+ Add</button>
+             </div>
+             {rows.tb.map((r, i) => (
+                 <div key={i} className="flex gap-2 mb-2">
+                     <select value={r.rate} onChange={(e)=>updRow('tb', i, 'rate', e.target.value)} className="flex-1 text-xs p-2 rounded border dark:bg-slate-900 dark:text-white">
+                         <option value="0">Select Model</option>
+                         {incConfig.tb.slabs.map((s, idx) => <option key={'s'+idx} value={s.rate}>{s.label}</option>)}
+                         {incConfig.tb.focus.map((f, idx) => <option key={'f'+idx} value={f.rate}>{f.name}</option>)}
+                     </select>
+                     <input type="number" value={r.qty} onChange={(e)=>updRow('tb', i, 'qty', e.target.value)} className="w-14 text-center text-xs p-2 rounded border dark:bg-slate-900 dark:text-white" />
+                     <button onClick={() => delRow('tb', i)} className="text-red-400"><Trash2 size={14}/></button>
                  </div>
              ))}
         </div>
