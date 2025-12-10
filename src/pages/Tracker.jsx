@@ -35,7 +35,6 @@ const Tracker = () => {
   const [mtdMonth, setMtdMonth] = useState(new Date().toISOString().slice(0, 7)); // YYYY-MM
 
   const dayData = sales[date] || { entries: [] };
-  // Fallback for legacy data (convert string log to empty array if needed, but store handles it)
   const entries = dayData.entries || [];
 
   const addToQueue = () => {
@@ -68,7 +67,6 @@ const Tracker = () => {
   const saveQueue = () => {
     queue.forEach(item => addSale(date, item));
     setQueue([]);
-    // alert("Saved successfully!");
   };
 
   const handleEdit = (entry) => {
@@ -78,7 +76,6 @@ const Tracker = () => {
       setVariant(entry.variant || '');
       setQty(entry.qty);
       setPrice(entry.price);
-      // Scroll to top
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -104,14 +101,6 @@ const Tracker = () => {
                           stats[e.brand].val += e.total;
                       }
                   });
-              } else {
-                  // Fallback for legacy aggregates
-                   BRANDS.forEach(b => {
-                       if(day[b.k]) {
-                           stats[b.k].qty += day[b.k];
-                           stats[b.k].val += (day[b.k+'Val'] || 0);
-                       }
-                   });
               }
           }
       });
@@ -163,54 +152,118 @@ const Tracker = () => {
   };
 
   const exportMonthPDF = async (monthPrefix) => {
-      const doc = new jsPDF();
-      doc.setFontSize(16);
-      doc.text(`Sales Log - ${monthPrefix}`, 14, 20);
+      const doc = new jsPDF('l', 'mm', 'a4');
+      doc.setFontSize(18);
+      doc.text(`Sales Report`, 14, 15);
 
-      const tableData = [];
-      let totalQty = 0;
-      let totalVal = 0;
+      const tableRows = [];
+      const header = [
+          'Date', 'Variant',
+          'Samsung\nQty', 'Samsung\nVal',
+          'Apple\nQty', 'Apple\nVal',
+          'Oppo\nQty', 'Oppo\nVal',
+          'Vivo\nQty', 'Vivo\nVal',
+          'Realme\nQty', 'Realme\nVal',
+          'Xiaomi\nQty', 'Xiaomi\nVal',
+          'Moto\nQty', 'Moto\nVal',
+          'Others\nQty', 'Others\nVal',
+          'Total\nQty', 'Total\nVal',
+          'Logs'
+      ];
 
-      Object.keys(sales).sort().forEach(d => {
-          if(d.startsWith(monthPrefix)) {
-              const day = sales[d];
-              if(day.entries) {
-                  day.entries.forEach(e => {
-                      tableData.push([
-                          d,
-                          e.brand,
-                          e.model,
-                          e.variant || '-',
-                          e.qty,
-                          e.total.toLocaleString()
-                      ]);
-                      totalQty += e.qty;
-                      totalVal += e.total;
-                  });
+      const dates = Object.keys(sales).filter(d => d.startsWith(monthPrefix)).sort();
+
+      dates.forEach(dateStr => {
+          const day = sales[dateStr];
+          const entries = day.entries || [];
+
+          const brandStats = {
+              samsung: {qty:0, val:0},
+              iphone: {qty:0, val:0},
+              oppo: {qty:0, val:0},
+              vivo: {qty:0, val:0},
+              realme: {qty:0, val:0},
+              mi: {qty:0, val:0},
+              moto: {qty:0, val:0},
+              other: {qty:0, val:0}
+          };
+          let dayTotalQty = 0;
+          let dayTotalVal = 0;
+
+          entries.forEach(e => {
+              const b = e.brand || 'other';
+              const k = BRANDS.find(br => br.k === b) ? b : 'other';
+
+              if(brandStats[k]) {
+                  brandStats[k].qty += e.qty;
+                  brandStats[k].val += e.total;
+              } else {
+                  // Fallback if brand key mismatch
+                  brandStats['other'].qty += e.qty;
+                  brandStats['other'].val += e.total;
               }
-          }
+
+              dayTotalQty += e.qty;
+              dayTotalVal += e.total;
+          });
+
+          const logLines = entries.map(e => {
+            const ts = e.timestamp ? e.timestamp.replace('T', ' ').slice(0, 19) : dateStr;
+            let logPart = `[${ts}] ${e.brand} ${e.model}`;
+            if(e.variant) logPart += ` (${e.variant})`;
+            logPart += ` - ${e.qty}u (Val: ${e.total})`;
+            return logPart;
+          }).join('\n');
+
+          const row = [
+              dateStr,
+              0, // Variant Placeholder
+              brandStats.samsung.qty, brandStats.samsung.val,
+              brandStats.iphone.qty, brandStats.iphone.val,
+              brandStats.oppo.qty, brandStats.oppo.val,
+              brandStats.vivo.qty, brandStats.vivo.val,
+              brandStats.realme.qty, brandStats.realme.val,
+              brandStats.mi.qty, brandStats.mi.val,
+              brandStats.moto.qty, brandStats.moto.val,
+              brandStats.other.qty, brandStats.other.val,
+              dayTotalQty, dayTotalVal,
+              logLines
+          ];
+          tableRows.push(row);
       });
 
-      if(tableData.length === 0) return alert("No data to export for " + monthPrefix);
-
-      // Add Total Row
-      tableData.push(['', '', '', 'TOTAL', totalQty, totalVal.toLocaleString()]);
+      if(tableRows.length === 0) return alert("No data to export for " + monthPrefix);
 
       doc.autoTable({
-          startY: 30,
-          head: [['Date', 'Brand', 'Model', 'Variant', 'Qty', 'Total']],
-          body: tableData,
+          head: [header],
+          body: tableRows,
+          startY: 20,
+          styles: { fontSize: 7, cellPadding: 1, overflow: 'linebreak' },
+          columnStyles: {
+              0: { cellWidth: 18 }, // Date
+              1: { cellWidth: 10 }, // Variant
+              // 16 Brand Columns: ~7mm each? 16*7 = 112
+              2: { cellWidth: 7 }, 3: { cellWidth: 11 }, // Samsung
+              4: { cellWidth: 7 }, 5: { cellWidth: 11 }, // Apple
+              6: { cellWidth: 7 }, 7: { cellWidth: 11 }, // Oppo
+              8: { cellWidth: 7 }, 9: { cellWidth: 11 }, // Vivo
+              10: { cellWidth: 7 }, 11: { cellWidth: 11 }, // Realme
+              12: { cellWidth: 7 }, 13: { cellWidth: 11 }, // Xiaomi
+              14: { cellWidth: 7 }, 15: { cellWidth: 11 }, // Moto
+              16: { cellWidth: 7 }, 17: { cellWidth: 11 }, // Others
+              18: { cellWidth: 9 }, 19: { cellWidth: 13 }, // Total
+              20: { cellWidth: 'auto' } // Logs
+          },
           theme: 'grid',
-          headStyles: { fillColor: [79, 70, 229] },
-          didParseCell: (data) => {
-              if (data.row.index === tableData.length - 1) {
-                  data.cell.styles.fontStyle = 'bold';
-                  data.cell.styles.fillColor = [240, 253, 244]; // Light green
-              }
+          headStyles: {
+              fillColor: [59, 130, 246],
+              fontSize: 7,
+              halign: 'center',
+              valign: 'middle'
           }
       });
 
-      const fileName = `Sales_Log_${monthPrefix}.pdf`;
+      const fileName = `Sales_Report_${monthPrefix}.pdf`;
 
       try {
           const pdfOutput = doc.output('datauristring');
@@ -226,7 +279,7 @@ const Tracker = () => {
           });
 
           await Share.share({
-              title: 'Export Sales Log PDF',
+              title: 'Export Sales Report',
               url: uriResult.uri
           });
       } catch (e) {
@@ -249,7 +302,6 @@ const Tracker = () => {
           />
         </div>
         <div className="flex gap-2">
-            {/* Main Header Export Button - Now exports MTD based on selected date */}
             <button onClick={() => exportMonthData(date.slice(0, 7))} className="p-2 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 rounded-lg"><Download size={20}/></button>
             <button onClick={() => setShowMtd(true)} className="p-2 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 rounded-lg"><BarChart2 size={20}/></button>
             <button onClick={() => { if(confirm("Clear Date?")) clearDate(date); }} className="p-2 bg-red-50 dark:bg-red-900/20 text-red-500 rounded-lg"><Trash2 size={20}/></button>
@@ -311,7 +363,7 @@ const Tracker = () => {
         </div>
       )}
 
-      {/* Daily Entries List (Editable) */}
+      {/* Daily Entries List */}
       <div className="space-y-2">
           <h4 className="text-xs font-bold text-slate-400 uppercase ml-2">Sales Log ({entries.length})</h4>
           {entries.length === 0 ? (
