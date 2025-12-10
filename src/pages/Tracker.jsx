@@ -1,7 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { PlusCircle, ShoppingCart, Trash2, Calendar, Edit2, BarChart2, X, Check, Download } from 'lucide-react';
+import { PlusCircle, ShoppingCart, Trash2, Calendar, Edit2, BarChart2, X, Check, Download, FileText } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
@@ -160,6 +162,79 @@ const Tracker = () => {
       }
   };
 
+  const exportMonthPDF = async (monthPrefix) => {
+      const doc = new jsPDF();
+      doc.setFontSize(16);
+      doc.text(`Sales Log - ${monthPrefix}`, 14, 20);
+
+      const tableData = [];
+      let totalQty = 0;
+      let totalVal = 0;
+
+      Object.keys(sales).sort().forEach(d => {
+          if(d.startsWith(monthPrefix)) {
+              const day = sales[d];
+              if(day.entries) {
+                  day.entries.forEach(e => {
+                      tableData.push([
+                          d,
+                          e.brand,
+                          e.model,
+                          e.variant || '-',
+                          e.qty,
+                          e.total.toLocaleString()
+                      ]);
+                      totalQty += e.qty;
+                      totalVal += e.total;
+                  });
+              }
+          }
+      });
+
+      if(tableData.length === 0) return alert("No data to export for " + monthPrefix);
+
+      // Add Total Row
+      tableData.push(['', '', '', 'TOTAL', totalQty, totalVal.toLocaleString()]);
+
+      doc.autoTable({
+          startY: 30,
+          head: [['Date', 'Brand', 'Model', 'Variant', 'Qty', 'Total']],
+          body: tableData,
+          theme: 'grid',
+          headStyles: { fillColor: [79, 70, 229] },
+          didParseCell: (data) => {
+              if (data.row.index === tableData.length - 1) {
+                  data.cell.styles.fontStyle = 'bold';
+                  data.cell.styles.fillColor = [240, 253, 244]; // Light green
+              }
+          }
+      });
+
+      const fileName = `Sales_Log_${monthPrefix}.pdf`;
+
+      try {
+          const pdfOutput = doc.output('datauristring');
+          await Filesystem.writeFile({
+              path: fileName,
+              data: pdfOutput.split(',')[1],
+              directory: Directory.Cache
+          });
+
+          const uriResult = await Filesystem.getUri({
+              path: fileName,
+              directory: Directory.Cache
+          });
+
+          await Share.share({
+              title: 'Export Sales Log PDF',
+              url: uriResult.uri
+          });
+      } catch (e) {
+          console.error(e);
+          doc.save(fileName);
+      }
+  };
+
   return (
     <div className="fade-in space-y-6 pb-24">
       {/* Date Header */}
@@ -269,12 +344,18 @@ const Tracker = () => {
 
                   <input type="month" value={mtdMonth} onChange={(e) => setMtdMonth(e.target.value)} className="w-full p-3 bg-slate-50 dark:bg-slate-800 rounded-xl mb-4 font-bold dark:text-white" />
 
-                  <div className="flex justify-end mb-4">
+                  <div className="flex justify-end mb-4 gap-2">
+                      <button
+                          onClick={() => exportMonthPDF(mtdMonth)}
+                          className="flex items-center gap-2 px-4 py-2 bg-indigo-500 hover:bg-indigo-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-indigo-500/20 transition-all"
+                      >
+                          <FileText size={18} /> PDF
+                      </button>
                       <button
                           onClick={() => exportMonthData(mtdMonth)}
                           className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold text-sm shadow-lg shadow-emerald-500/20 transition-all"
                       >
-                          <Download size={18} /> Export MTD Excel
+                          <Download size={18} /> Excel
                       </button>
                   </div>
 

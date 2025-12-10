@@ -22,7 +22,7 @@ const BRANDS = [
 ];
 
 const Analytics = () => {
-  const { sales } = useAppStore();
+  const { sales, profile } = useAppStore();
   const [metric, setMetric] = useState('volume'); // 'volume' or 'value'
 
   const chartData = useMemo(() => {
@@ -131,6 +131,10 @@ const Analytics = () => {
       doc.setFontSize(10);
       doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 28);
 
+      if (profile.name || profile.outlet) {
+          doc.text(`Name: ${profile.name || 'N/A'} | Outlet: ${profile.outlet || 'N/A'}`, 14, 34);
+      }
+
       // Calculation Logic (Independent of View)
       const volData = {};
       const valData = {};
@@ -181,9 +185,11 @@ const Analytics = () => {
           return [b.l, ...row, total];
       });
 
-      doc.text("Volume (Units)", 14, 35);
+      const startY = (profile.name || profile.outlet) ? 42 : 36;
+
+      doc.text("Volume (Units)", 14, startY);
       doc.autoTable({
-          startY: 40,
+          startY: startY + 5,
           head: [['Brand', 'Week 1', 'Week 2', 'Week 3', 'Week 4', 'Total Qty']],
           body: volTableBody,
           theme: 'grid',
