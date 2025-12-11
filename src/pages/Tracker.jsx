@@ -248,22 +248,23 @@ const Tracker = () => {
           head: [header],
           body: tableRows,
           startY: 20,
-          styles: { fontSize: 7, cellPadding: 1, overflow: 'linebreak' },
+          margin: { top: 20, left: 10, right: 10 },
+          styles: { fontSize: 7, cellPadding: 1, overflow: 'linebreak', valign: 'middle' },
           columnStyles: {
-              0: { cellWidth: 18 }, // Date
-              1: { cellWidth: 10 }, // Variant
-              // 16 Brand Columns: ~7mm each? 16*7 = 112
-              2: { cellWidth: 7 }, 3: { cellWidth: 11 }, // Samsung
-              4: { cellWidth: 7 }, 5: { cellWidth: 11 }, // Apple
-              6: { cellWidth: 7 }, 7: { cellWidth: 11 }, // Oppo
-              8: { cellWidth: 7 }, 9: { cellWidth: 11 }, // Vivo
-              10: { cellWidth: 7 }, 11: { cellWidth: 11 }, // Realme
-              12: { cellWidth: 7 }, 13: { cellWidth: 11 }, // Xiaomi
-              14: { cellWidth: 7 }, 15: { cellWidth: 11 }, // Moto
-              16: { cellWidth: 7 }, 17: { cellWidth: 11 }, // Others
-              18: { cellWidth: 9 }, 19: { cellWidth: 13 }, // Total
-              20: { cellWidth: 50 }, // Logs - restricted width
-              21: { cellWidth: 'auto' } // Brand Summary - takes remaining
+              0: { cellWidth: 15 }, // Date
+              1: { cellWidth: 8 }, // Variant
+              // 16 Brand Columns: Optimized widths
+              2: { cellWidth: 6 }, 3: { cellWidth: 10 }, // Samsung
+              4: { cellWidth: 6 }, 5: { cellWidth: 10 }, // Apple
+              6: { cellWidth: 6 }, 7: { cellWidth: 10 }, // Oppo
+              8: { cellWidth: 6 }, 9: { cellWidth: 10 }, // Vivo
+              10: { cellWidth: 6 }, 11: { cellWidth: 10 }, // Realme
+              12: { cellWidth: 6 }, 13: { cellWidth: 10 }, // Xiaomi
+              14: { cellWidth: 6 }, 15: { cellWidth: 10 }, // Moto
+              16: { cellWidth: 6 }, 17: { cellWidth: 10 }, // Others
+              18: { cellWidth: 8 }, 19: { cellWidth: 12 }, // Total
+              20: { cellWidth: 40 }, // Logs - restricted width to allow summary space
+              21: { cellWidth: 'auto' } // Brand Summary - takes remaining (~50mm+)
           },
           theme: 'grid',
           headStyles: {
