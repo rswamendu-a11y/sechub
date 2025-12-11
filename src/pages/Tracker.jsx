@@ -168,7 +168,8 @@ const Tracker = () => {
           'Moto\nQty', 'Moto\nVal',
           'Others\nQty', 'Others\nVal',
           'Total\nQty', 'Total\nVal',
-          'Logs'
+          'Logs',
+          'Brand Summary'
       ];
 
       const dates = Object.keys(sales).filter(d => d.startsWith(monthPrefix)).sort();
@@ -215,6 +216,14 @@ const Tracker = () => {
             return logPart;
           }).join('\n');
 
+          const brandSummary = BRANDS.map(b => {
+             const stat = brandStats[b.k];
+             if (stat && stat.qty > 0) {
+                 return `${b.l}: ${stat.qty}u (₹${stat.val.toLocaleString()})`;
+             }
+             return null;
+          }).filter(Boolean).join('\n');
+
           const row = [
               dateStr,
               0, // Variant Placeholder
@@ -227,7 +236,8 @@ const Tracker = () => {
               brandStats.moto.qty, brandStats.moto.val,
               brandStats.other.qty, brandStats.other.val,
               dayTotalQty, dayTotalVal,
-              logLines
+              logLines,
+              brandSummary
           ];
           tableRows.push(row);
       });
@@ -252,7 +262,8 @@ const Tracker = () => {
               14: { cellWidth: 7 }, 15: { cellWidth: 11 }, // Moto
               16: { cellWidth: 7 }, 17: { cellWidth: 11 }, // Others
               18: { cellWidth: 9 }, 19: { cellWidth: 13 }, // Total
-              20: { cellWidth: 'auto' } // Logs
+              20: { cellWidth: 50 }, // Logs - restricted width
+              21: { cellWidth: 'auto' } // Brand Summary - takes remaining
           },
           theme: 'grid',
           headStyles: {
