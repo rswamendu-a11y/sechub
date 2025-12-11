@@ -24,6 +24,7 @@ const BRANDS = [
 const Analytics = () => {
   const { sales, profile } = useAppStore();
   const [metric, setMetric] = useState('volume'); // 'volume' or 'value'
+  const [dealerBrand, setDealerBrand] = useState('samsung');
 
   const chartData = useMemo(() => {
     // Buckets: "1-7", "8-14", "15-21", "22-End"
@@ -107,7 +108,7 @@ const Analytics = () => {
             const entry = sales[dateStr];
             if (entry.entries) {
                 entry.entries.forEach(e => {
-                    if (e.brand !== 'samsung') return;
+                    if (e.brand !== dealerBrand) return;
                     const price = e.price || 0;
                     if (price >= 100000) brackets[0]++;
                     else if (price >= 70000) brackets[1]++;
@@ -122,7 +123,7 @@ const Analytics = () => {
         }
     });
     return brackets;
-  }, [sales]);
+  }, [sales, dealerBrand]);
 
   const handleExportPDF = async () => {
       const doc = new jsPDF();
@@ -272,8 +273,16 @@ const Analytics = () => {
 
        {/* Price Bracket Table */}
        <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
-            <div className="p-4 bg-red-800 text-white font-bold text-center border-b border-red-900">
-                DEALER PRICE (RANGE) - INR FOR SAMSUNG
+            {/* Dealer Price Header with Filter */}
+            <div className="p-4 bg-red-800 text-white font-bold flex justify-between items-center border-b border-red-900">
+                <span>DEALER PRICE - {dealerBrand.toUpperCase()}</span>
+                <select
+                    value={dealerBrand}
+                    onChange={(e) => setDealerBrand(e.target.value)}
+                    className="bg-red-900/50 text-white border border-red-700 rounded-lg p-1 text-xs outline-none focus:ring-1 focus:ring-white"
+                >
+                    {BRANDS.map(b => <option key={b.k} value={b.k}>{b.l}</option>)}
+                </select>
             </div>
             <div className="overflow-x-auto">
                 <table className="w-full text-center text-sm">
@@ -456,10 +465,10 @@ const GrowthTracker = ({ sales, brands }) => {
                      <thead className="bg-slate-50 dark:bg-slate-900 text-slate-500 uppercase">
                          <tr>
                              <th className="p-2 text-left">Brand</th>
-                             <th className="p-2">MTD Vol</th>
+                             <th className="p-2 pr-6">MTD Vol</th>
                              <th className="p-2">LMTD Vol</th>
                              <th className="p-2">Diff</th>
-                             <th className="p-2">MTD Val</th>
+                             <th className="p-2 pr-6">MTD Val</th>
                              <th className="p-2">LMTD Val</th>
                          </tr>
                      </thead>
@@ -474,10 +483,10 @@ const GrowthTracker = ({ sales, brands }) => {
                              return (
                                  <tr key={b.k} className="dark:text-slate-300">
                                      <td className="p-2 text-left font-bold">{b.l}</td>
-                                     <td className="p-2">{cQty}</td>
+                                     <td className="p-2 pr-6">{cQty}</td>
                                      <td className="p-2 text-slate-400">{lQty}</td>
                                      <td className={`p-2 font-bold ${diff >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{diff > 0 ? '+' : ''}{diff}</td>
-                                     <td className="p-2">{cVal.toLocaleString()}</td>
+                                     <td className="p-2 pr-6">{cVal.toLocaleString()}</td>
                                      <td className="p-2 text-slate-400">{lVal.toLocaleString()}</td>
                                  </tr>
                              );

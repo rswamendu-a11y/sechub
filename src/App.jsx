@@ -50,6 +50,10 @@ const App = () => {
       return (
         <div className="fixed inset-0 z-[60] bg-slate-900 flex flex-col items-center justify-center p-4 transition-opacity duration-300">
             <div className="bg-white dark:bg-slate-800 p-8 rounded-3xl shadow-2xl w-full max-w-sm text-center">
+                <div className="mb-4 text-center">
+                    <h1 className="text-3xl font-black text-indigo-600 dark:text-indigo-400 mb-1">Shubtrckr</h1>
+                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Sales & Analytics Tool</p>
+                </div>
                 <div className="mb-6 text-indigo-500 flex justify-center"><LockIcon size={48} /></div>
                 <h2 className="text-2xl font-bold mb-2 dark:text-white">Security Check</h2>
                 <p className="text-slate-500 text-sm mb-6">Enter your 4-digit PIN to access.</p>
