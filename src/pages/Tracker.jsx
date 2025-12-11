@@ -209,8 +209,7 @@ const Tracker = () => {
           });
 
           const logLines = entries.map(e => {
-            const ts = e.timestamp ? e.timestamp.replace('T', ' ').slice(0, 19) : dateStr;
-            let logPart = `[${ts}] ${e.brand} ${e.model}`;
+            let logPart = `${e.brand} ${e.model}`;
             if(e.variant) logPart += ` (${e.variant})`;
             logPart += ` - ${e.qty}u (Val: ${e.total})`;
             return logPart;
