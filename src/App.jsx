@@ -7,7 +7,7 @@ import Incentive from './pages/Incentive';
 import Settings from './pages/Settings';
 
 const App = () => {
-  const { theme, setTheme, pin } = useAppStore();
+  const { theme, setTheme, pin, profile } = useAppStore();
   const [view, setView] = useState('tracker');
   const [locked, setLocked] = useState(true);
   const [pinInput, setPinInput] = useState(['', '', '', '']);
@@ -72,8 +72,8 @@ const App = () => {
                     <span className="font-bold text-lg">S</span>
                 </div>
                 <div>
-                    <h1 className="font-bold text-sm leading-none dark:text-white">SEC Unified</h1>
-                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Enterprise v2.0</p>
+                    <h1 className="font-bold text-sm leading-none dark:text-white">{profile?.outlet || 'SEC Unified'}</h1>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{profile?.name || 'Enterprise v2.0'}</p>
                 </div>
             </div>
             <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800">

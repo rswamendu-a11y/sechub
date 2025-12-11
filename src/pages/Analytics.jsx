@@ -267,10 +267,13 @@ const Analytics = () => {
           <Bar data={chartData} options={options} />
        </div>
 
+       {/* MTD vs LMTD Comparison */}
+       <GrowthTracker sales={sales} brands={BRANDS} />
+
        {/* Price Bracket Table */}
        <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
             <div className="p-4 bg-red-800 text-white font-bold text-center border-b border-red-900">
-                Dealer Price (Range) – INR
+                DEALER PRICE (RANGE) - INR FOR SAMSUNG
             </div>
             <div className="overflow-x-auto">
                 <table className="w-full text-center text-sm">
@@ -305,6 +308,185 @@ const Analytics = () => {
        </div>
     </div>
   );
+};
+
+const GrowthTracker = ({ sales, brands }) => {
+    const [metric, setMetric] = useState('volume'); // volume | value
+
+    const stats = useMemo(() => {
+        const today = new Date();
+        const currentYear = today.getFullYear();
+        const currentMonth = today.getMonth();
+        const currentDay = today.getDate();
+
+        // Calculate Last Month Year/Month
+        const lastMonthDate = new Date(today);
+        lastMonthDate.setMonth(lastMonthDate.getMonth() - 1);
+        const lastMonthYear = lastMonthDate.getFullYear();
+        const lastMonth = lastMonthDate.getMonth();
+
+        // Initialize Stats
+        const currentStats = {};
+        const lastStats = {};
+        brands.forEach(b => {
+            currentStats[b.k] = { qty: 0, val: 0 };
+            lastStats[b.k] = { qty: 0, val: 0 };
+        });
+
+        Object.keys(sales).forEach(dateStr => {
+            const d = new Date(dateStr);
+            const dYear = d.getFullYear();
+            const dMonth = d.getMonth();
+            const dDay = d.getDate();
+
+            const entry = sales[dateStr];
+            // Helper to add
+            const addToStats = (targetStats) => {
+                if (entry.entries) {
+                    entry.entries.forEach(e => {
+                        if (targetStats[e.brand]) {
+                            targetStats[e.brand].qty += e.qty;
+                            targetStats[e.brand].val += e.total;
+                        }
+                    });
+                } else {
+                    // Fallback
+                    brands.forEach(b => {
+                        if (targetStats[b.k]) {
+                            targetStats[b.k].qty += entry[b.k] || 0;
+                            targetStats[b.k].val += entry[b.k+'Val'] || 0;
+                        }
+                    });
+                }
+            };
+
+            // Check Current MTD
+            if (dYear === currentYear && dMonth === currentMonth && dDay <= currentDay) {
+                addToStats(currentStats);
+            }
+
+            // Check Last Month TD
+            // Note: If today is 31st and last month only has 30 days, logic might need adjustment.
+            // Simple approach: dDay <= currentDay. If last month has fewer days, it naturally limits.
+            if (dYear === lastMonthYear && dMonth === lastMonth && dDay <= currentDay) {
+                addToStats(lastStats);
+            }
+        });
+
+        return { current: currentStats, last: lastStats };
+    }, [sales, brands]);
+
+    const chartData = useMemo(() => {
+        return {
+            labels: brands.map(b => b.l),
+            datasets: [
+                {
+                    label: 'Current Month (MTD)',
+                    data: brands.map(b => metric === 'volume' ? stats.current[b.k].qty : stats.current[b.k].val),
+                    backgroundColor: '#6366f1', // Indigo
+                    borderRadius: 4,
+                },
+                {
+                    label: 'Last Month (LMTD)',
+                    data: brands.map(b => metric === 'volume' ? stats.last[b.k].qty : stats.last[b.k].val),
+                    backgroundColor: '#94a3b8', // Slate
+                    borderRadius: 4,
+                }
+            ]
+        };
+    }, [stats, metric, brands]);
+
+    const options = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+            legend: { position: 'bottom' },
+            title: {
+                display: true,
+                text: `MTD vs LMTD (${metric === 'volume' ? 'Volume' : 'Value'})`,
+                color: '#64748b'
+            },
+            tooltip: {
+                callbacks: {
+                    label: (context) => {
+                        let label = context.dataset.label || '';
+                        if (label) {
+                            label += ': ';
+                        }
+                        if (context.parsed.y !== null) {
+                             label += metric === 'value' ? context.parsed.y.toLocaleString() : context.parsed.y;
+                        }
+                        return label;
+                    }
+                }
+            }
+        },
+        scales: {
+            x: { grid: { display: false } },
+            y: { beginAtZero: true, grid: { color: '#f1f5f9' } }
+        }
+    };
+
+    return (
+        <div className="bg-white dark:bg-slate-800 p-4 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700">
+             <div className="flex justify-between items-center mb-4">
+                 <h3 className="font-bold text-slate-700 dark:text-slate-200">Growth Tracker</h3>
+                 <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">
+                    <button
+                        onClick={() => setMetric('volume')}
+                        className={`px-3 py-1 rounded-md text-xs font-bold transition ${metric === 'volume' ? 'bg-white shadow text-indigo-600' : 'text-slate-500'}`}
+                    >
+                        Vol
+                    </button>
+                    <button
+                        onClick={() => setMetric('value')}
+                        className={`px-3 py-1 rounded-md text-xs font-bold transition ${metric === 'value' ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}`}
+                    >
+                        Val
+                    </button>
+                 </div>
+             </div>
+             <div className="h-64">
+                 <Bar data={chartData} options={options} />
+             </div>
+
+             {/* Summary Table for Quick View */}
+             <div className="mt-4 overflow-x-auto">
+                 <table className="w-full text-xs text-center">
+                     <thead className="bg-slate-50 dark:bg-slate-900 text-slate-500 uppercase">
+                         <tr>
+                             <th className="p-2 text-left">Brand</th>
+                             <th className="p-2">MTD Vol</th>
+                             <th className="p-2">LMTD Vol</th>
+                             <th className="p-2">Diff</th>
+                             <th className="p-2">MTD Val</th>
+                             <th className="p-2">LMTD Val</th>
+                         </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
+                         {brands.map(b => {
+                             const cQty = stats.current[b.k].qty;
+                             const lQty = stats.last[b.k].qty;
+                             const diff = cQty - lQty;
+                             const cVal = stats.current[b.k].val;
+                             const lVal = stats.last[b.k].val;
+
+                             return (
+                                 <tr key={b.k} className="dark:text-slate-300">
+                                     <td className="p-2 text-left font-bold">{b.l}</td>
+                                     <td className="p-2">{cQty}</td>
+                                     <td className="p-2 text-slate-400">{lQty}</td>
+                                     <td className={`p-2 font-bold ${diff >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{diff > 0 ? '+' : ''}{diff}</td>
+                                     <td className="p-2">{cVal.toLocaleString()}</td>
+                                     <td className="p-2 text-slate-400">{lVal.toLocaleString()}</td>
+                                 </tr>
+                             );
+                         })}
+                     </tbody>
+                 </table>
+             </div>
+        </div>
+    );
 };
 
 export default Analytics;

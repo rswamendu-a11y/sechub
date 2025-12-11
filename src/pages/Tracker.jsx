@@ -19,7 +19,7 @@ const BRANDS = [
 ];
 
 const Tracker = () => {
-  const { sales, addSale, deleteSale, updateSale, clearDate, date, setDate } = useAppStore();
+  const { sales, addSale, deleteSale, updateSale, clearDate, date, setDate, profile } = useAppStore();
   const [queue, setQueue] = useState([]);
 
   // Form State
@@ -154,11 +154,11 @@ const Tracker = () => {
   const exportMonthPDF = async (monthPrefix) => {
       const doc = new jsPDF('l', 'mm', 'a4');
       doc.setFontSize(18);
-      doc.text(`Sales Report`, 14, 15);
+      doc.text(`Sales Report - ${profile?.name || ''} ${profile?.outlet || ''}`, 14, 15);
 
       const tableRows = [];
       const header = [
-          'Date', 'Variant',
+          'Date',
           'Samsung\nQty', 'Samsung\nVal',
           'Apple\nQty', 'Apple\nVal',
           'Oppo\nQty', 'Oppo\nVal',
@@ -225,7 +225,6 @@ const Tracker = () => {
 
           const row = [
               dateStr,
-              0, // Variant Placeholder
               brandStats.samsung.qty, brandStats.samsung.val,
               brandStats.iphone.qty, brandStats.iphone.val,
               brandStats.oppo.qty, brandStats.oppo.val,
@@ -251,19 +250,18 @@ const Tracker = () => {
           styles: { fontSize: 7, cellPadding: 1, overflow: 'linebreak', valign: 'middle' },
           columnStyles: {
               0: { cellWidth: 15 }, // Date
-              1: { cellWidth: 8 }, // Variant
-              // 16 Brand Columns: Optimized widths
-              2: { cellWidth: 6 }, 3: { cellWidth: 10 }, // Samsung
-              4: { cellWidth: 6 }, 5: { cellWidth: 10 }, // Apple
-              6: { cellWidth: 6 }, 7: { cellWidth: 10 }, // Oppo
-              8: { cellWidth: 6 }, 9: { cellWidth: 10 }, // Vivo
-              10: { cellWidth: 6 }, 11: { cellWidth: 10 }, // Realme
-              12: { cellWidth: 6 }, 13: { cellWidth: 10 }, // Xiaomi
-              14: { cellWidth: 6 }, 15: { cellWidth: 10 }, // Moto
-              16: { cellWidth: 6 }, 17: { cellWidth: 10 }, // Others
-              18: { cellWidth: 8 }, 19: { cellWidth: 12 }, // Total
-              20: { cellWidth: 40 }, // Logs - restricted width to allow summary space
-              21: { cellWidth: 'auto' } // Brand Summary - takes remaining (~50mm+)
+              // Re-indexed Brand Columns (Shifted -1)
+              1: { cellWidth: 6 }, 2: { cellWidth: 10 }, // Samsung
+              3: { cellWidth: 6 }, 4: { cellWidth: 10 }, // Apple
+              5: { cellWidth: 6 }, 6: { cellWidth: 10 }, // Oppo
+              7: { cellWidth: 6 }, 8: { cellWidth: 10 }, // Vivo
+              9: { cellWidth: 6 }, 10: { cellWidth: 10 }, // Realme
+              11: { cellWidth: 6 }, 12: { cellWidth: 10 }, // Xiaomi
+              13: { cellWidth: 6 }, 14: { cellWidth: 10 }, // Moto
+              15: { cellWidth: 6 }, 16: { cellWidth: 10 }, // Others
+              17: { cellWidth: 8 }, 18: { cellWidth: 12 }, // Total
+              19: { cellWidth: 40 }, // Logs
+              20: { cellWidth: 'auto' } // Summary
           },
           theme: 'grid',
           headStyles: {
