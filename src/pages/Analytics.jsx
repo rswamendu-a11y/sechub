@@ -275,7 +275,7 @@ const Analytics = () => {
        <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
             {/* Dealer Price Header with Filter */}
             <div className="p-4 bg-red-800 text-white font-bold flex justify-between items-center border-b border-red-900">
-                <span>DEALER PRICE - {dealerBrand.toUpperCase()}</span>
+                <span>DEALER PRICE (RANGE) - INR</span>
                 <select
                     value={dealerBrand}
                     onChange={(e) => setDealerBrand(e.target.value)}
