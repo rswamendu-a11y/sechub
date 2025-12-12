@@ -1,0 +1,11 @@
+
+> temp-project@0.0.0 dev
+> vite
+
+
+  VITE v7.2.7  ready in 380 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+5:54:33 PM [vite] changed tsconfig file detected: /app/tsconfig.json - Clearing cache and forcing full-reload to ensure TypeScript is compiled with updated config values.
+5:54:33 PM [vite] changed tsconfig file detected: /app/tsconfig.json - Clearing cache and forcing full-reload to ensure TypeScript is compiled with updated config values.
