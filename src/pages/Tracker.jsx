@@ -188,6 +188,11 @@ const Tracker = () => {
           'Brand Summary'
       ];
 
+      // Calculate Total by Brand for Summary
+      const brandTotals = {};
+      BRANDS.forEach(b => brandTotals[b.k] = { l: b.l, qty: 0, val: 0 });
+      brandTotals['other'] = { l: 'Others', qty: 0, val: 0 }; // Ensure other exists
+
       const dates = Object.keys(sales).filter(d => d.startsWith(monthPrefix)).sort();
 
       dates.forEach(dateStr => {
@@ -214,10 +219,20 @@ const Tracker = () => {
               if(brandStats[k]) {
                   brandStats[k].qty += e.qty;
                   brandStats[k].val += e.total;
+
+                  // Add to Grand Summary
+                  if(brandTotals[k]) {
+                      brandTotals[k].qty += e.qty;
+                      brandTotals[k].val += e.total;
+                  }
               } else {
                   // Fallback if brand key mismatch
                   brandStats['other'].qty += e.qty;
                   brandStats['other'].val += e.total;
+
+                  // Add to Grand Summary
+                  brandTotals['other'].qty += e.qty;
+                  brandTotals['other'].val += e.total;
               }
 
               dayTotalQty += e.qty;
@@ -258,10 +273,35 @@ const Tracker = () => {
 
       if(tableRows.length === 0) return alert("No data to export for " + monthPrefix);
 
+      // --- BRAND SUMMARY TABLE INJECTION ---
+      // We insert rows *before* the Grand Total
+      tableRows.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']); // Spacer
+      tableRows.push(['BRAND SUMMARY', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']); // Header
+
+      Object.values(brandTotals).forEach(bt => {
+          if (bt.qty > 0) {
+              const summaryRow = [
+                  `${bt.l} Total:`,
+                  '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', // Spacers
+                  bt.qty, bt.val, // Align with Total columns (roughly, or just use first columns)
+                  '', ''
+              ];
+              // Hack: Put text in first column, Qty in 17, Val in 18
+              // Actually, user wants "Samsung Total: 10 units, 2.4L" in a row.
+              // Let's formatting it into the first few columns
+              const text = `${bt.l}: ${bt.qty} units, ₹${bt.val.toLocaleString()}`;
+              tableRows.push([text, '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']);
+          }
+      });
+      tableRows.push(['', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '']); // Spacer
+
       // Grand Total Calculation for PDF
       // Indexes: 17=TotalQty, 18=TotalVal
-      const grandTotalQty = tableRows.reduce((a, r) => a + (r[17] || 0), 0);
-      const grandTotalVal = tableRows.reduce((a, r) => a + (r[18] || 0), 0);
+      // Note: We must filter out our summary rows calculation!
+      // The original rows are indices 0 to dates.length-1.
+      // Let's recalculate grand total from brandTotals to be safe and clean.
+      const grandTotalQty = Object.values(brandTotals).reduce((a, c) => a + c.qty, 0);
+      const grandTotalVal = Object.values(brandTotals).reduce((a, c) => a + c.val, 0);
 
       // Add Grand Total Row
       const grandTotalRow = [

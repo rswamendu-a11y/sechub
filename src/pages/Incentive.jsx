@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { Settings, Trash2, PlusCircle, Save, RotateCcw, Download, ChevronRight, X, Info, BarChart2 } from 'lucide-react';
-import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
@@ -93,7 +94,7 @@ const IncentiveContent = () => {
                   if(entry && entry.entries && Array.isArray(entry.entries)) {
                       entry.entries.forEach(e => {
                           // Defensive check for brand existence
-                          if(e && e.brand && (e.brand.toLowerCase() || '') === 'samsung') {
+                          if(e && e.brand && (e.brand.toLowerCase() === 'samsung')) {
                               totalVal += (e.total || 0);
                           }
                       });
@@ -104,14 +105,21 @@ const IncentiveContent = () => {
               }
           });
 
-          // 2. Apply Slabs
+          // 2. Apply Slabs (Updated Logic)
           let slabInc = 0;
+          // < 6L = 0
           if (totalVal < 600000) slabInc = 0;
+          // 6L - 8L = 1500
           else if (totalVal < 800000) slabInc = 1500;
+          // 8L - 10L = 2500
           else if (totalVal < 1000000) slabInc = 2500;
+          // 10L - 12L = 4000
           else if (totalVal < 1200000) slabInc = 4000;
+          // 12L - 15L = 6000
           else if (totalVal < 1500000) slabInc = 6000;
+          // 15L - 20L = 9000
           else if (totalVal < 2000000) slabInc = 9000;
+          // > 20L = 12000
           else slabInc = 12000;
 
           const totalInc = slabInc + (parseFloat(meta.pli) || 0);
@@ -231,7 +239,46 @@ const IncentiveContent = () => {
   };
 
   const handleExport = async () => {
-    // ... (unchanged export logic)
+      // PDF Export
+      const doc = new jsPDF();
+      doc.setFontSize(16);
+      doc.text("Incentive Report", 14, 20);
+      doc.setFontSize(10);
+      doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 28);
+
+      const rows = result.logs.map(l => [l.c, l.n, l.v]);
+      rows.push(['TOTAL', '', result.grand]);
+
+      doc.autoTable({
+          startY: 35,
+          head: [['Category', 'Details', 'Payout']],
+          body: rows,
+          theme: 'grid',
+          headStyles: { fillColor: [79, 70, 229] }
+      });
+
+      const fileName = `Incentive_${Date.now()}.pdf`;
+      try {
+          const pdfOutput = doc.output('datauristring');
+          await Filesystem.writeFile({
+              path: fileName,
+              data: pdfOutput.split(',')[1],
+              directory: Directory.Cache
+          });
+
+          const uriResult = await Filesystem.getUri({
+              path: fileName,
+              directory: Directory.Cache
+          });
+
+          await Share.share({
+              title: 'Incentive Report',
+              url: uriResult.uri
+          });
+      } catch(e) {
+          console.error(e);
+          doc.save(fileName);
+      }
   };
 
   // --- CONFIG HANDLERS ---
@@ -393,7 +440,7 @@ const IncentiveContent = () => {
             <div className="flex justify-between items-center mb-3">
                 <h2 className="font-bold dark:text-white">Incentive</h2>
                 <div className="flex gap-2">
-                    <button onClick={handleExport} className="text-xs bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 px-3 py-1 rounded-lg flex items-center gap-1"><Download size={14} /> Export</button>
+                    <button onClick={handleExport} className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 px-3 py-1 rounded-lg flex items-center gap-1"><Download size={14} /> PDF</button>
                     <button onClick={() => setView('config')} className="text-xs bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded-lg flex items-center gap-1"><Settings size={14} /> Config</button>
                 </div>
             </div>
@@ -420,7 +467,7 @@ const IncentiveContent = () => {
              <div className="flex justify-between items-end mb-2">
                  <div>
                      <div className="text-3xl font-bold">₹{samsungIncentive.totalInc.toLocaleString()}</div>
-                     <div className="text-xs opacity-80">Vol: ₹{(samsungIncentive.totalVal/100000).toFixed(2)}L | Slab: {samsungIncentive.slabInc}</div>
+                     <div className="text-xs opacity-80">Val: ₹{(samsungIncentive.totalVal/100000).toFixed(2)}L | Slab: {samsungIncentive.slabInc}</div>
                  </div>
                  <div className="text-right">
                      <label className="text-[10px] uppercase font-bold opacity-70 block">PLI Add-on</label>
