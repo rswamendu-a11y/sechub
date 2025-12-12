@@ -6,7 +6,7 @@ import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
 
 const Incentive = () => {
-  const { incConfig, setIncConfig, resetIncConfig, profile } = useAppStore();
+  const { incConfig, setIncConfig, resetIncConfig, profile, sales } = useAppStore();
   const [view, setView] = useState('calc'); // 'calc' or 'config'
   const [activeTab, setActiveTab] = useState('SP'); // For Config
 
@@ -14,9 +14,11 @@ const Incentive = () => {
   const [rows, setRows] = useState({ sp: [], tb: [], wr: [], cp: [], npc: [], bun: [] });
   const [meta, setMeta] = useState({
       k_ff7: 0, t_ff7: 'low', k_s25: 0, t_s25: 'low',
-      accVal: 0, accBase: 0, target: 50, channel: 'standard', status: 'existing'
+      accVal: 0, accBase: 0, target: 50, channel: 'standard', status: 'existing',
+      pli: 6000
   });
   const [result, setResult] = useState({ logs: [], grand: 0, spQ: 0, ach: 0 });
+  const [samsungIncentive, setSamsungIncentive] = useState({ totalVal: 0, slabInc: 0, totalInc: 0 });
 
   // Initialize rows on mount
   useEffect(() => {
@@ -35,7 +37,45 @@ const Incentive = () => {
   // Sync Calc Logic
   useEffect(() => {
     calculate();
-  }, [rows, meta, incConfig]);
+    calculateSamsungIncentive();
+  }, [rows, meta, incConfig, sales]);
+
+  const calculateSamsungIncentive = () => {
+      // 1. Filter for Samsung
+      let totalVal = 0;
+      const currentMonth = new Date().getMonth();
+      const currentYear = new Date().getFullYear();
+
+      Object.keys(sales).forEach(dateStr => {
+          const d = new Date(dateStr);
+          if(d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
+              const entry = sales[dateStr];
+              if(entry.entries) {
+                  entry.entries.forEach(e => {
+                      if(e.brand && e.brand.toLowerCase() === 'samsung') {
+                          totalVal += e.total || 0;
+                      }
+                  });
+              } else {
+                  // Fallback for aggregate
+                   if(entry.samsungVal) totalVal += entry.samsungVal;
+              }
+          }
+      });
+
+      // 2. Apply Slabs
+      let slabInc = 0;
+      if (totalVal < 600000) slabInc = 0;
+      else if (totalVal < 800000) slabInc = 1500;
+      else if (totalVal < 1000000) slabInc = 2500;
+      else if (totalVal < 1200000) slabInc = 4000;
+      else if (totalVal < 1500000) slabInc = 6000;
+      else if (totalVal < 2000000) slabInc = 9000;
+      else slabInc = 12000;
+
+      const totalInc = slabInc + (meta.pli || 0);
+      setSamsungIncentive({ totalVal, slabInc, totalInc });
+  };
 
   const addRow = (key) => setRows({ ...rows, [key]: [...rows[key], { qty: 1, rate: 0, fm: false }] });
   const delRow = (key, idx) => {
@@ -196,7 +236,12 @@ const Incentive = () => {
   const ConfigSection = () => (
     <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-lg mb-24 h-full flex flex-col">
        <div className="flex justify-between items-center mb-4">
-         <h3 className="font-bold text-lg dark:text-white">Configuration</h3>
+         <div className="flex items-center gap-2">
+            <button onClick={() => setView('calc')} className="p-2 bg-slate-100 dark:bg-slate-700 rounded-full">
+                <ChevronRight className="rotate-180" size={20} />
+            </button>
+            <h3 className="font-bold text-lg dark:text-white">Configuration</h3>
+         </div>
          <div className="flex gap-2">
             <button onClick={resetIncConfig} className="text-red-500 p-2"><RotateCcw size={16}/></button>
             <button onClick={() => setView('calc')} className="text-indigo-500 p-2"><Save size={16}/></button>
@@ -459,6 +504,27 @@ const Incentive = () => {
                  <div><label className="font-bold text-slate-400 block">Target</label><input type="number" value={meta.target} onChange={(e)=>setMeta({...meta, target: e.target.value})} className="w-full bg-slate-50 dark:bg-slate-900 dark:text-white border-none rounded p-1"/></div>
                  <div><label className="font-bold text-slate-400 block">Achieved</label><div className="font-bold text-lg dark:text-white">{result.spQ} <span className="text-xs text-slate-400">({result.ach}%)</span></div></div>
             </div>
+        </div>
+
+        {/* Samsung Estimated Incentive Card */}
+        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-4 rounded-2xl shadow-lg relative overflow-hidden">
+             <div className="absolute top-0 right-0 p-4 opacity-20"><BarChart2 size={64}/></div>
+             <h3 className="font-bold text-sm opacity-80 mb-2">Samsung Auto-Incentive (Est.)</h3>
+             <div className="flex justify-between items-end mb-2">
+                 <div>
+                     <div className="text-3xl font-bold">₹{samsungIncentive.totalInc.toLocaleString()}</div>
+                     <div className="text-xs opacity-80">Vol: ₹{(samsungIncentive.totalVal/100000).toFixed(2)}L | Slab: {samsungIncentive.slabInc}</div>
+                 </div>
+                 <div className="text-right">
+                     <label className="text-[10px] uppercase font-bold opacity-70 block">PLI Add-on</label>
+                     <input
+                        type="number"
+                        value={meta.pli}
+                        onChange={(e) => setMeta({...meta, pli: parseFloat(e.target.value)||0})}
+                        className="w-16 bg-white/20 border-none rounded text-right text-sm p-1 text-white placeholder-white"
+                     />
+                 </div>
+             </div>
         </div>
 
         {/* Smartphones */}

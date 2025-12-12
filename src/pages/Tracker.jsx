@@ -131,6 +131,22 @@ const Tracker = () => {
 
       if(data.length === 0) return alert("No data to export for " + monthPrefix);
 
+      // Calculate Sums for Grand Total
+      const totalQty = data.reduce((a,c) => a + (c.Qty || 0), 0);
+      const totalVal = data.reduce((a,c) => a + (c.Total || 0), 0);
+
+      // Append Grand Total Row
+      data.push({
+          Date: 'GRAND TOTAL',
+          Brand: '',
+          Model: '',
+          Variant: '',
+          Qty: totalQty,
+          Price: '',
+          Total: totalVal,
+          Time: ''
+      });
+
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.json_to_sheet(data);
       XLSX.utils.book_append_sheet(wb, ws, "Sales Log");
@@ -242,9 +258,29 @@ const Tracker = () => {
 
       if(tableRows.length === 0) return alert("No data to export for " + monthPrefix);
 
+      // Grand Total Calculation for PDF
+      // Indexes: 17=TotalQty, 18=TotalVal
+      const grandTotalQty = tableRows.reduce((a, r) => a + (r[17] || 0), 0);
+      const grandTotalVal = tableRows.reduce((a, r) => a + (r[18] || 0), 0);
+
+      // Add Grand Total Row
+      const grandTotalRow = [
+          'GRAND TOTAL',
+          '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', '', // Empty brand columns
+          grandTotalQty, grandTotalVal,
+          '', ''
+      ];
+      tableRows.push(grandTotalRow);
+
       doc.autoTable({
           head: [header],
           body: tableRows,
+          didParseCell: (data) => {
+              if (data.row.index === tableRows.length - 1) {
+                  data.cell.styles.fontStyle = 'bold';
+                  data.cell.styles.fillColor = [220, 252, 231]; // Light Emerald
+              }
+          },
           startY: 20,
           margin: { top: 20, left: 10, right: 10 },
           styles: { fontSize: 7, cellPadding: 1, overflow: 'linebreak', valign: 'middle' },
