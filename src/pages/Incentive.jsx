@@ -171,7 +171,7 @@ const IncentiveContent = () => {
           else if (totalVal < 2000000) slabInc = 9000;
           else slabInc = 12000;
 
-          const totalInc = slabInc; // Tentative PLI
+          const totalInc = slabInc;
           setSamsungIncentive({ totalVal, slabInc, totalInc });
       } catch (error) {
           console.error("Samsung Incentive Calc Error:", error);
@@ -227,11 +227,8 @@ const IncentiveContent = () => {
           const ach = meta.target > 0 ? spQ/meta.target : 0;
 
           let missed = false;
-          // Removed the check that zeroes out payout if ach < threshold.
-          // Now we just log it but don't kill the income unless the Gate Multiplier (gateM) itself is 0.
           if(!isExempt && meta.channel === 'standard' && ach < (c.sp?.target_thresh || 0.8)) {
               missed=true; gateN=`Missed Target (${spQ}/${meta.target})`;
-              // spFin is NOT set to 0 here based on "Unlock Total Payout" request.
           } else if(gateM === 0) {
               missed=true; gateN=`Missed Volume Gate (${spQ})`;
           }
@@ -283,10 +280,10 @@ const IncentiveContent = () => {
           let accTot = 0;
           const ab = meta.accBase || (spRaw * 25);
           let accPct = 0;
-          // Updated accessor: c.accessories?.slabs
-          if(ab > 0 && meta.channel!=='exclusive' && c.accessories?.slabs) {
+          // Updated accessor: c.accessories?.items
+          if(ab > 0 && meta.channel!=='exclusive' && c.accessories?.items) {
               accPct = (meta.accVal/ab)*100;
-              for(let t of c.accessories.slabs) { if(accPct>=t.min) { accTot = t.rate; break; } }
+              for(let t of c.accessories.items) { if(accPct>=t.min) { accTot = t.rate; break; } }
           }
           logs.push({c:"Accessories", n:`Base: ${ab.toFixed(0)} (${accPct.toFixed(1)}%)`, v:accTot});
 
@@ -295,16 +292,8 @@ const IncentiveContent = () => {
               logs.push({c:"Misc", n:"", v:c.misc.amount});
           }
 
-          // PLI from Samsung Auto
           const pli = samsungIncentive.slabInc || 0;
-          // We include PLI in grand total but verify if it should be separate
-          // The formula: "Total Payout = (PLI_Amount) + ..."
-          // But `samsungIncentive.slabInc` is calculated in a separate effect.
-          // We access it from state here.
-
-          // Grand Total
           let grand = pli + comb + tbFin + npcFin + cpFinal + bunFin + accTot + (c.misc?.amount || 0) + (meta.pli || 0);
-          // Note: meta.pli is the manual adjustment. samsungIncentive.slabInc is the auto one.
 
           setResult({ logs, grand, spQ, ach: (ach*100).toFixed(0) });
       } catch (error) {
@@ -490,18 +479,15 @@ const IncentiveContent = () => {
             <>
                 <div className="flex justify-between items-center mb-2">
                     <h4 className="font-bold text-sm text-blue-600">Wearables Config</h4>
-                    <button onClick={() => addConfigItem('wearables.models', {name:'New', rate:0, keys:''})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                    <button onClick={() => addConfigItem('wearables.items', {name:'New', rate:0, keys:''})} className="text-emerald-500"><PlusCircle size={16}/></button>
                 </div>
-                {(incConfig.wearables?.models || []).map((s, i) => (
+                {(incConfig.wearables?.items || []).map((s, i) => (
                     <div key={i} className="flex gap-2 mb-2 items-center">
-                        <input value={s.name} onChange={(e)=>updateConfig(`wearables.models.${i}.name`, e.target.value)} className="w-1/2 p-2 border rounded text-xs" placeholder="Model" />
-                        <input type="number" value={s.rate} onChange={(e)=>updateConfig(`wearables.models.${i}.rate`, e.target.value)} className="w-1/4 p-2 border rounded text-xs" placeholder="Rate" />
-                        <button onClick={() => removeConfigItem('wearables.models', i)} className="text-red-400"><Trash2 size={14}/></button>
+                        <input value={s.name} onChange={(e)=>updateConfig(`wearables.items.${i}.name`, e.target.value)} className="w-1/2 p-2 border rounded text-xs" placeholder="Model" />
+                        <input type="number" value={s.rate} onChange={(e)=>updateConfig(`wearables.items.${i}.rate`, e.target.value)} className="w-1/4 p-2 border rounded text-xs" placeholder="Rate" />
+                        <button onClick={() => removeConfigItem('wearables.items', i)} className="text-red-400"><Trash2 size={14}/></button>
                     </div>
                 ))}
-                {(!incConfig.wearables?.models || incConfig.wearables.models.length === 0) &&
-                    <div className="text-center text-xs text-slate-400 mt-4">No models found. Click + to add.</div>
-                }
             </>
         )}
 
@@ -509,14 +495,14 @@ const IncentiveContent = () => {
             <>
                 <div className="flex justify-between items-center mb-2">
                     <h4 className="font-bold text-sm text-blue-600">Care+ Slabs</h4>
-                    <button onClick={() => addConfigItem('carePlus.slabs', {min:0, rate:0, label:'New'})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                    <button onClick={() => addConfigItem('carePlus.items', {min:0, rate:0, label:'New'})} className="text-emerald-500"><PlusCircle size={16}/></button>
                 </div>
-                {(incConfig.carePlus?.slabs || []).map((s, i) => (
+                {(incConfig.carePlus?.items || []).map((s, i) => (
                     <div key={i} className="flex gap-2 mb-2 items-center">
-                        <input placeholder="Min" type="number" value={s.min} onChange={(e)=>updateConfig(`carePlus.slabs.${i}.min`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
-                        <input placeholder="Rate" type="number" value={s.rate} onChange={(e)=>updateConfig(`carePlus.slabs.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
-                        <input placeholder="Label" value={s.label} onChange={(e)=>updateConfig(`carePlus.slabs.${i}.label`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
-                        <button onClick={() => removeConfigItem('carePlus.slabs', i)} className="text-red-400"><Trash2 size={14}/></button>
+                        <input placeholder="Min" type="number" value={s.min} onChange={(e)=>updateConfig(`carePlus.items.${i}.min`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
+                        <input placeholder="Rate" type="number" value={s.rate} onChange={(e)=>updateConfig(`carePlus.items.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
+                        <input placeholder="Label" value={s.label} onChange={(e)=>updateConfig(`carePlus.items.${i}.label`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
+                        <button onClick={() => removeConfigItem('carePlus.items', i)} className="text-red-400"><Trash2 size={14}/></button>
                     </div>
                 ))}
             </>
@@ -526,13 +512,13 @@ const IncentiveContent = () => {
              <>
                  <div className="flex justify-between items-center mb-2">
                      <h4 className="font-bold text-sm text-blue-600">Note PC Config</h4>
-                     <button onClick={() => addConfigItem('notePC.models', {name:'New', rate:0})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                     <button onClick={() => addConfigItem('notePC.items', {name:'New', rate:0})} className="text-emerald-500"><PlusCircle size={16}/></button>
                  </div>
-                 {(incConfig.notePC?.models || []).map((s, i) => (
+                 {(incConfig.notePC?.items || []).map((s, i) => (
                      <div key={i} className="flex gap-2 mb-2 items-center">
-                         <input value={s.name} onChange={(e)=>updateConfig(`notePC.models.${i}.name`, e.target.value)} className="w-1/2 p-2 border rounded text-xs" placeholder="Model" />
-                         <input type="number" value={s.rate} onChange={(e)=>updateConfig(`notePC.models.${i}.rate`, e.target.value)} className="w-1/4 p-2 border rounded text-xs" placeholder="Rate" />
-                         <button onClick={() => removeConfigItem('notePC.models', i)} className="text-red-400"><Trash2 size={14}/></button>
+                         <input value={s.name} onChange={(e)=>updateConfig(`notePC.items.${i}.name`, e.target.value)} className="w-1/2 p-2 border rounded text-xs" placeholder="Model" />
+                         <input type="number" value={s.rate} onChange={(e)=>updateConfig(`notePC.items.${i}.rate`, e.target.value)} className="w-1/4 p-2 border rounded text-xs" placeholder="Rate" />
+                         <button onClick={() => removeConfigItem('notePC.items', i)} className="text-red-400"><Trash2 size={14}/></button>
                      </div>
                  ))}
              </>
@@ -542,13 +528,13 @@ const IncentiveContent = () => {
              <>
                  <div className="flex justify-between items-center mb-2">
                      <h4 className="font-bold text-sm text-blue-600">Bundles Config</h4>
-                     <button onClick={() => addConfigItem('bundles.models', {name:'New', rate:0})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                     <button onClick={() => addConfigItem('bundles.items', {name:'New', rate:0})} className="text-emerald-500"><PlusCircle size={16}/></button>
                  </div>
-                 {(incConfig.bundles?.models || []).map((s, i) => (
+                 {(incConfig.bundles?.items || []).map((s, i) => (
                      <div key={i} className="flex gap-2 mb-2 items-center">
-                         <input value={s.name} onChange={(e)=>updateConfig(`bundles.models.${i}.name`, e.target.value)} className="w-1/2 p-2 border rounded text-xs" placeholder="Name" />
-                         <input type="number" value={s.rate} onChange={(e)=>updateConfig(`bundles.models.${i}.rate`, e.target.value)} className="w-1/4 p-2 border rounded text-xs" placeholder="Rate" />
-                         <button onClick={() => removeConfigItem('bundles.models', i)} className="text-red-400"><Trash2 size={14}/></button>
+                         <input value={s.name} onChange={(e)=>updateConfig(`bundles.items.${i}.name`, e.target.value)} className="w-1/2 p-2 border rounded text-xs" placeholder="Name" />
+                         <input type="number" value={s.rate} onChange={(e)=>updateConfig(`bundles.items.${i}.rate`, e.target.value)} className="w-1/4 p-2 border rounded text-xs" placeholder="Rate" />
+                         <button onClick={() => removeConfigItem('bundles.items', i)} className="text-red-400"><Trash2 size={14}/></button>
                      </div>
                  ))}
              </>
@@ -558,13 +544,13 @@ const IncentiveContent = () => {
              <>
                  <div className="flex justify-between items-center mb-2">
                      <h4 className="font-bold text-sm text-blue-600">Accessories Slabs</h4>
-                     <button onClick={() => addConfigItem('accessories.slabs', {min:0, rate:0})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                     <button onClick={() => addConfigItem('accessories.items', {min:0, rate:0})} className="text-emerald-500"><PlusCircle size={16}/></button>
                  </div>
-                 {(incConfig.accessories?.slabs || []).map((s, i) => (
+                 {(incConfig.accessories?.items || []).map((s, i) => (
                      <div key={i} className="flex gap-2 mb-2 items-center">
-                         <input type="number" value={s.min} onChange={(e)=>updateConfig(`accessories.slabs.${i}.min`, e.target.value)} className="w-1/2 p-2 border rounded text-xs" placeholder="Min %" />
-                         <input type="number" value={s.rate} onChange={(e)=>updateConfig(`accessories.slabs.${i}.rate`, e.target.value)} className="w-1/4 p-2 border rounded text-xs" placeholder="Rate" />
-                         <button onClick={() => removeConfigItem('accessories.slabs', i)} className="text-red-400"><Trash2 size={14}/></button>
+                         <input type="number" value={s.min} onChange={(e)=>updateConfig(`accessories.items.${i}.min`, e.target.value)} className="w-1/2 p-2 border rounded text-xs" placeholder="Min %" />
+                         <input type="number" value={s.rate} onChange={(e)=>updateConfig(`accessories.items.${i}.rate`, e.target.value)} className="w-1/4 p-2 border rounded text-xs" placeholder="Rate" />
+                         <button onClick={() => removeConfigItem('accessories.items', i)} className="text-red-400"><Trash2 size={14}/></button>
                      </div>
                  ))}
              </>
@@ -670,7 +656,7 @@ const IncentiveContent = () => {
                  <div key={i} className="flex gap-2 mb-2 items-center">
                      <select value={r.rate} onChange={(e)=>updRow('wr', i, 'rate', e.target.value)} className="flex-1 text-xs p-2 rounded border dark:bg-slate-900 dark:text-white">
                          <option value="0">Select Model</option>
-                         {(incConfig.wearables?.models || []).map((w, idx) => <option key={idx} value={w.rate}>{w.name} ({w.rate})</option>)}
+                         {(incConfig.wearables?.items || []).map((w, idx) => <option key={idx} value={w.rate}>{w.name} ({w.rate})</option>)}
                      </select>
                      <input type="number" value={r.qty} onChange={(e)=>updRow('wr', i, 'qty', e.target.value)} className="w-14 text-center text-xs p-2 rounded border dark:bg-slate-900 dark:text-white" />
                      <button onClick={() => delRow('wr', i)} className="text-red-400"><Trash2 size={14}/></button>
@@ -689,7 +675,7 @@ const IncentiveContent = () => {
                  <div key={i} className="flex gap-2 mb-2 items-center">
                      <select value={r.rate} onChange={(e)=>updRow('cp', i, 'rate', e.target.value)} className="flex-1 text-xs p-2 rounded border dark:bg-slate-900 dark:text-white">
                          <option value="0">Select Slab</option>
-                         {(incConfig.carePlus?.slabs || []).map((s, idx) => <option key={idx} value={s.rate}>{s.label} ({s.rate})</option>)}
+                         {(incConfig.carePlus?.items || []).map((s, idx) => <option key={idx} value={s.rate}>{s.label} ({s.rate})</option>)}
                      </select>
                      <input type="number" value={r.qty} onChange={(e)=>updRow('cp', i, 'qty', e.target.value)} className="w-14 text-center text-xs p-2 rounded border dark:bg-slate-900 dark:text-white" />
                      <button onClick={() => delRow('cp', i)} className="text-red-400"><Trash2 size={14}/></button>
@@ -734,7 +720,7 @@ const IncentiveContent = () => {
                  <div key={i} className="flex gap-2 mb-2 items-center">
                      <select value={r.rate} onChange={(e)=>updRow('npc', i, 'rate', e.target.value)} className="flex-1 text-xs p-2 rounded border dark:bg-slate-900 dark:text-white">
                          <option value="0">Select Model</option>
-                         {(incConfig.notePC?.models || []).map((n, idx) => <option key={idx} value={n.rate}>{n.name} ({n.rate})</option>)}
+                         {(incConfig.notePC?.items || []).map((n, idx) => <option key={idx} value={n.rate}>{n.name} ({n.rate})</option>)}
                      </select>
                      <input type="number" value={r.qty} onChange={(e)=>updRow('npc', i, 'qty', e.target.value)} className="w-14 text-center text-xs p-2 rounded border dark:bg-slate-900 dark:text-white" />
                      <button onClick={() => delRow('npc', i)} className="text-red-400"><Trash2 size={14}/></button>
@@ -752,8 +738,7 @@ const IncentiveContent = () => {
                  <div key={i} className="flex gap-2 mb-2 items-center">
                      <select value={r.rate} onChange={(e)=>updRow('bun', i, 'rate', e.target.value)} className="flex-1 text-xs p-2 rounded border dark:bg-slate-900 dark:text-white">
                          <option value="0">Select Bundle</option>
-                         {/* Fallback to simple mapping or new structure */}
-                         {(incConfig.bundles?.models || []).map((b, idx) => <option key={idx} value={b.rate}>{b.name} ({b.rate})</option>)}
+                         {(incConfig.bundles?.items || []).map((b, idx) => <option key={'s'+idx} value={b.rate}>{b.name} (Std - {b.rate})</option>)}
                      </select>
                      <input type="number" value={r.qty} onChange={(e)=>updRow('bun', i, 'qty', e.target.value)} className="w-14 text-center text-xs p-2 rounded border dark:bg-slate-900 dark:text-white" />
                      <button onClick={() => delRow('bun', i)} className="text-red-400"><Trash2 size={14}/></button>
