@@ -41,40 +41,49 @@ const Incentive = () => {
   }, [rows, meta, incConfig, sales]);
 
   const calculateSamsungIncentive = () => {
-      // 1. Filter for Samsung
-      let totalVal = 0;
-      const currentMonth = new Date().getMonth();
-      const currentYear = new Date().getFullYear();
+      try {
+          // Safety: Check if sales exists
+          if (!sales) return;
 
-      Object.keys(sales).forEach(dateStr => {
-          const d = new Date(dateStr);
-          if(d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
-              const entry = sales[dateStr];
-              if(entry.entries) {
-                  entry.entries.forEach(e => {
-                      if(e.brand && e.brand.toLowerCase() === 'samsung') {
-                          totalVal += e.total || 0;
-                      }
-                  });
-              } else {
-                  // Fallback for aggregate
-                   if(entry.samsungVal) totalVal += entry.samsungVal;
+          // 1. Filter for Samsung
+          let totalVal = 0;
+          const currentMonth = new Date().getMonth();
+          const currentYear = new Date().getFullYear();
+
+          Object.keys(sales).forEach(dateStr => {
+              const d = new Date(dateStr);
+              if(d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
+                  const entry = sales[dateStr];
+                  if(entry && entry.entries && Array.isArray(entry.entries)) {
+                      entry.entries.forEach(e => {
+                          // Defensive check for brand existence
+                          if((e.brand?.toLowerCase() || '') === 'samsung') {
+                              totalVal += e.total || 0;
+                          }
+                      });
+                  } else if (entry) {
+                      // Fallback for aggregate
+                      if(entry.samsungVal) totalVal += entry.samsungVal;
+                  }
               }
-          }
-      });
+          });
 
-      // 2. Apply Slabs
-      let slabInc = 0;
-      if (totalVal < 600000) slabInc = 0;
-      else if (totalVal < 800000) slabInc = 1500;
-      else if (totalVal < 1000000) slabInc = 2500;
-      else if (totalVal < 1200000) slabInc = 4000;
-      else if (totalVal < 1500000) slabInc = 6000;
-      else if (totalVal < 2000000) slabInc = 9000;
-      else slabInc = 12000;
+          // 2. Apply Slabs
+          let slabInc = 0;
+          if (totalVal < 600000) slabInc = 0;
+          else if (totalVal < 800000) slabInc = 1500;
+          else if (totalVal < 1000000) slabInc = 2500;
+          else if (totalVal < 1200000) slabInc = 4000;
+          else if (totalVal < 1500000) slabInc = 6000;
+          else if (totalVal < 2000000) slabInc = 9000;
+          else slabInc = 12000;
 
-      const totalInc = slabInc + (meta.pli || 0);
-      setSamsungIncentive({ totalVal, slabInc, totalInc });
+          const totalInc = slabInc + (meta.pli || 0);
+          setSamsungIncentive({ totalVal, slabInc, totalInc });
+      } catch (error) {
+          console.error("Samsung Incentive Calc Error:", error);
+          setSamsungIncentive({ totalVal: 0, slabInc: 0, totalInc: 0 });
+      }
   };
 
   const addRow = (key) => setRows({ ...rows, [key]: [...rows[key], { qty: 1, rate: 0, fm: false }] });
@@ -90,76 +99,83 @@ const Incentive = () => {
   };
 
   const calculate = () => {
-      const c = incConfig;
-      let logs = [];
-      let spQ=0, spRaw=0;
-      rows.sp.forEach(r => {
-          if(r.qty>0) { spQ+=r.qty; spRaw += r.qty * (r.fm ? r.rate*c.sp.fm_mult : r.rate); }
-      });
+      try {
+          const c = incConfig;
+          if(!c) return; // Safety check
 
-      const isExempt = (meta.channel === 'sis_pro' || meta.status === 'new_joinee');
-      const gateSet = isExempt ? c.sp.gates.sis : c.sp.gates.std;
-      let gateM = 0;
-      let gateN = "Missed Gate";
-      for(let g of gateSet) { if(spQ >= g.min) { gateM = g.p; gateN = ""; break; } }
+          let logs = [];
+          let spQ=0, spRaw=0;
+          rows.sp.forEach(r => {
+              if(r.qty>0) { spQ+=r.qty; spRaw += r.qty * (r.fm ? r.rate*c.sp.fm_mult : r.rate); }
+          });
 
-      let spFin = spRaw * gateM;
-      let spPot = spRaw * (gateM > 0 ? gateM : 1.0);
-      const ach = meta.target > 0 ? spQ/meta.target : 0;
+          const isExempt = (meta.channel === 'sis_pro' || meta.status === 'new_joinee');
+          const gateSet = isExempt ? c.sp.gates.sis : c.sp.gates.std;
+          let gateM = 0;
+          let gateN = "Missed Gate";
+          for(let g of gateSet) { if(spQ >= g.min) { gateM = g.p; gateN = ""; break; } }
 
-      let missed = false;
-      if(!isExempt && meta.channel === 'standard' && ach < c.sp.target_thresh) {
-          missed=true; spFin=0; gateN=`Missed Target (${spQ}/${meta.target})`;
-      } else if(gateM === 0) {
-          missed=true; gateN=`Missed Volume Gate (${spQ})`;
+          let spFin = spRaw * gateM;
+          let spPot = spRaw * (gateM > 0 ? gateM : 1.0);
+          const ach = meta.target > 0 ? spQ/meta.target : 0;
+
+          let missed = false;
+          if(!isExempt && meta.channel === 'standard' && ach < c.sp.target_thresh) {
+              missed=true; spFin=0; gateN=`Missed Target (${spQ}/${meta.target})`;
+          } else if(gateM === 0) {
+              missed=true; gateN=`Missed Volume Gate (${spQ})`;
+          }
+          logs.push({c:"Smartphones", n:gateN, v:spFin, pot:spPot, missed});
+
+          let tbTot=0; rows.tb.forEach(r => tbTot += (r.qty||0)*r.rate);
+          let tbFin = Math.min(tbTot, c.caps.tb);
+          logs.push({c:"Tablets", n:tbTot>tbFin?"Capped":"", v:tbFin});
+
+          let wrTot=0; rows.wr.forEach(r => wrTot += (r.qty||0)*r.rate);
+          logs.push({c:"Wearables", n:"", v:wrTot});
+
+          let comb = spFin + wrTot;
+          if(comb > c.caps.global) { comb = c.caps.global; logs.push({c:"Global Cap", n:"Max 75k applied", v:0}); }
+
+          let cpTot=0, cpQ=0;
+          rows.cp.forEach(r => { cpQ+=r.qty; cpTot+=(r.qty||0)*r.rate; });
+
+          // Kickers
+          let kickTot = 0;
+          if(meta.k_ff7 > 0) kickTot += meta.k_ff7 * (meta.t_ff7==='high' ? c.cp.kickers.ff7.h : c.cp.kickers.ff7.l);
+          if(meta.k_s25 > 0) kickTot += meta.k_s25 * (meta.t_s25==='high' ? c.cp.kickers.s25.h : c.cp.kickers.s25.l);
+
+          let cpVol = cpTot; // Base volume incentive
+          if(cpQ>=8) cpVol*=1.2; // Multiplier for high volume
+          if(cpQ>0 && cpQ<3) { cpVol=0; logs.push({c:"Care+", n:"Gate < 3", v:0}); } // Gate check
+
+          let cpFinal = cpVol + kickTot;
+          logs.push({c:"Care+", n:`Vol: ${cpQ}, Kickers: ${kickTot}`, v:cpFinal});
+
+          let npcTot=0; rows.npc.forEach(r => npcTot += (r.qty||0)*r.rate);
+          let npcFin = Math.min(npcTot, c.caps.npc);
+          logs.push({c:"Note PC", n:npcTot>npcFin?"Capped":"", v:npcFin});
+
+          let bunTot = 0;
+          rows.bun.forEach(r => bunTot += (r.qty||0)*r.rate);
+          let bunFin = Math.min(bunTot, c.caps.bun);
+          logs.push({c:"Bundles", n:bunTot>bunFin?"Capped":"", v:bunFin});
+
+          let accTot = 0;
+          const ab = meta.accBase || (spRaw * 25);
+          let accPct = 0;
+          if(ab > 0 && meta.channel!=='exclusive') {
+              accPct = (meta.accVal/ab)*100;
+              for(let t of c.acc) { if(accPct>=t.min) { accTot = t.rate; break; } }
+          }
+          logs.push({c:"Accessories", n:`Base: ${ab.toFixed(0)} (${accPct.toFixed(1)}%)`, v:accTot});
+
+          let grand = comb + tbFin + npcFin + cpFinal + bunFin + accTot;
+          setResult({ logs, grand, spQ, ach: (ach*100).toFixed(0) });
+      } catch (error) {
+          console.error("Calculation Error:", error);
+          // Don't crash the app, just stop the calc
       }
-      logs.push({c:"Smartphones", n:gateN, v:spFin, pot:spPot, missed});
-
-      let tbTot=0; rows.tb.forEach(r => tbTot += (r.qty||0)*r.rate);
-      let tbFin = Math.min(tbTot, c.caps.tb);
-      logs.push({c:"Tablets", n:tbTot>tbFin?"Capped":"", v:tbFin});
-
-      let wrTot=0; rows.wr.forEach(r => wrTot += (r.qty||0)*r.rate);
-      logs.push({c:"Wearables", n:"", v:wrTot});
-
-      let comb = spFin + wrTot;
-      if(comb > c.caps.global) { comb = c.caps.global; logs.push({c:"Global Cap", n:"Max 75k applied", v:0}); }
-
-      let cpTot=0, cpQ=0;
-      rows.cp.forEach(r => { cpQ+=r.qty; cpTot+=(r.qty||0)*r.rate; });
-
-      // Kickers
-      let kickTot = 0;
-      if(meta.k_ff7 > 0) kickTot += meta.k_ff7 * (meta.t_ff7==='high' ? c.cp.kickers.ff7.h : c.cp.kickers.ff7.l);
-      if(meta.k_s25 > 0) kickTot += meta.k_s25 * (meta.t_s25==='high' ? c.cp.kickers.s25.h : c.cp.kickers.s25.l);
-
-      let cpVol = cpTot; // Base volume incentive
-      if(cpQ>=8) cpVol*=1.2; // Multiplier for high volume
-      if(cpQ>0 && cpQ<3) { cpVol=0; logs.push({c:"Care+", n:"Gate < 3", v:0}); } // Gate check
-
-      let cpFinal = cpVol + kickTot;
-      logs.push({c:"Care+", n:`Vol: ${cpQ}, Kickers: ${kickTot}`, v:cpFinal});
-
-      let npcTot=0; rows.npc.forEach(r => npcTot += (r.qty||0)*r.rate);
-      let npcFin = Math.min(npcTot, c.caps.npc);
-      logs.push({c:"Note PC", n:npcTot>npcFin?"Capped":"", v:npcFin});
-
-      let bunTot = 0;
-      rows.bun.forEach(r => bunTot += (r.qty||0)*r.rate);
-      let bunFin = Math.min(bunTot, c.caps.bun);
-      logs.push({c:"Bundles", n:bunTot>bunFin?"Capped":"", v:bunFin});
-
-      let accTot = 0;
-      const ab = meta.accBase || (spRaw * 25);
-      let accPct = 0;
-      if(ab > 0 && meta.channel!=='exclusive') {
-          accPct = (meta.accVal/ab)*100;
-          for(let t of c.acc) { if(accPct>=t.min) { accTot = t.rate; break; } }
-      }
-      logs.push({c:"Accessories", n:`Base: ${ab.toFixed(0)} (${accPct.toFixed(1)}%)`, v:accTot});
-
-      let grand = comb + tbFin + npcFin + cpFinal + bunFin + accTot;
-      setResult({ logs, grand, spQ, ach: (ach*100).toFixed(0) });
   };
 
   const handleExport = async () => {
