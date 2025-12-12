@@ -77,15 +77,75 @@ const IncentiveContent = () => {
     calculateSamsungIncentive();
   }, [rows, meta, incConfig, sales]);
 
+  // Auto-populate rows from Sales Data (Dealer Price Logic)
+  useEffect(() => {
+      calculateAutoIncentives();
+  }, [sales]);
+
+  const getPerUnitIncentive = (price) => {
+      if (price >= 100000) return 700;
+      if (price >= 70000) return 600;
+      if (price >= 40000) return 500;
+      if (price >= 30000) return 300;
+      if (price >= 20000) return 200;
+      if (price >= 15000) return 100;
+      if (price >= 10000) return 75;
+      return 25; // < 10k
+  };
+
+  const calculateAutoIncentives = () => {
+      try {
+        if (!sales) return;
+        const today = new Date();
+        const currentMonthStr = today.toISOString().slice(0, 7);
+
+        const spRows = [];
+        const tbRows = [];
+
+        // Helper to aggregate rows by rate
+        const addToRows = (arr, rate) => {
+            const existing = arr.find(r => r.rate === rate);
+            if (existing) existing.qty += 1;
+            else arr.push({ qty: 1, rate, fm: false });
+        };
+
+        Object.keys(sales).forEach(dateStr => {
+             if (dateStr.startsWith(currentMonthStr)) {
+                 const entry = sales[dateStr];
+                 if (entry && entry.entries && Array.isArray(entry.entries)) {
+                     entry.entries.forEach(e => {
+                         if (e.brand && e.brand.toLowerCase() === 'samsung') {
+                             const price = e.total || 0;
+                             const isTablet = (e.model || '').toLowerCase().includes('tab');
+
+                             if (isTablet) {
+                                 addToRows(tbRows, getPerUnitIncentive(price));
+                             } else {
+                                 addToRows(spRows, getPerUnitIncentive(price));
+                             }
+                         }
+                     });
+                 }
+             }
+        });
+
+        if (spRows.length > 0 || tbRows.length > 0) {
+            setRows(prev => ({
+                ...prev,
+                sp: spRows.length > 0 ? spRows : prev.sp,
+                tb: tbRows.length > 0 ? tbRows : prev.tb
+            }));
+        }
+
+      } catch (e) { console.error("Auto Calc Error", e); }
+  };
+
   const calculateSamsungIncentive = () => {
       try {
-          // Safety: Check if sales exists
           if (!sales) return;
 
-          // 1. Filter for Samsung
           let totalVal = 0;
           const today = new Date();
-          // Use string prefix for robust month matching (YYYY-MM)
           const currentMonthStr = today.toISOString().slice(0, 7);
 
           Object.keys(sales).forEach(dateStr => {
@@ -93,36 +153,26 @@ const IncentiveContent = () => {
                   const entry = sales[dateStr];
                   if(entry && entry.entries && Array.isArray(entry.entries)) {
                       entry.entries.forEach(e => {
-                          // Defensive check for brand existence
                           if(e && e.brand && (e.brand.toLowerCase() === 'samsung')) {
                               totalVal += (e.total || 0);
                           }
                       });
                   } else if (entry) {
-                      // Fallback for aggregate
                       if(entry.samsungVal) totalVal += (entry.samsungVal || 0);
                   }
               }
           });
 
-          // 2. Apply Slabs (Updated Logic)
           let slabInc = 0;
-          // < 6L = 0
           if (totalVal < 600000) slabInc = 0;
-          // 6L - 8L = 1500
           else if (totalVal < 800000) slabInc = 1500;
-          // 8L - 10L = 2500
           else if (totalVal < 1000000) slabInc = 2500;
-          // 10L - 12L = 4000
           else if (totalVal < 1200000) slabInc = 4000;
-          // 12L - 15L = 6000
           else if (totalVal < 1500000) slabInc = 6000;
-          // 15L - 20L = 9000
           else if (totalVal < 2000000) slabInc = 9000;
-          // > 20L = 12000
           else slabInc = 12000;
 
-          const totalInc = slabInc + (parseFloat(meta.pli) || 0);
+          const totalInc = slabInc; // Tentative PLI
           setSamsungIncentive({ totalVal, slabInc, totalInc });
       } catch (error) {
           console.error("Samsung Incentive Calc Error:", error);
@@ -157,7 +207,7 @@ const IncentiveContent = () => {
   const calculate = () => {
       try {
           const c = incConfig;
-          if(!c) return; // Safety check
+          if(!c) return;
 
           let logs = [];
           let spQ=0, spRaw=0;
@@ -226,20 +276,25 @@ const IncentiveContent = () => {
           let accPct = 0;
           if(ab > 0 && meta.channel!=='exclusive' && c.acc) {
               accPct = (meta.accVal/ab)*100;
-              for(let t of c.acc) { if(accPct>=t.min) { accTot = t.rate; break; } }
+              // incConfig.acc.slabs
+              const slabs = c.acc?.slabs || [];
+              for(let t of slabs) { if(accPct>=t.min) { accTot = t.rate; break; } }
           }
           logs.push({c:"Accessories", n:`Base: ${ab.toFixed(0)} (${accPct.toFixed(1)}%)`, v:accTot});
 
-          let grand = comb + tbFin + npcFin + cpFinal + bunFin + accTot;
+          // Misc
+          if (c.misc?.amount) {
+              logs.push({c:"Misc/Adjustment", n:"", v:c.misc.amount});
+          }
+
+          let grand = comb + tbFin + npcFin + cpFinal + bunFin + accTot + (c.misc?.amount || 0);
           setResult({ logs, grand, spQ, ach: (ach*100).toFixed(0) });
       } catch (error) {
           console.error("Calculation Error:", error);
-          // Don't crash the app, just stop the calc
       }
   };
 
   const handleExport = async () => {
-      // PDF Export
       const doc = new jsPDF();
       doc.setFontSize(16);
       doc.text("Incentive Report", 14, 20);
@@ -351,12 +406,12 @@ const IncentiveContent = () => {
             <>
                 <div>
                     <div className="flex justify-between items-center mb-2">
-                        <h4 className="font-bold text-sm text-blue-600">Slabs</h4>
+                        <h4 className="font-bold text-sm text-blue-600">Slabs (Dealer Price)</h4>
                         <button onClick={() => addConfigItem('sp.slabs', {min:0, rate:0, label:'New'})} className="text-emerald-500"><PlusCircle size={16}/></button>
                     </div>
                     {(incConfig.sp?.slabs || []).map((s, i) => (
                         <div key={i} className="flex gap-2 mb-2 items-center">
-                            <input placeholder="Min" type="number" value={s.min} onChange={(e)=>updateConfig(`sp.slabs.${i}.min`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
+                            <input placeholder="Min Price" type="number" value={s.min} onChange={(e)=>updateConfig(`sp.slabs.${i}.min`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
                             <input placeholder="Rate" type="number" value={s.rate} onChange={(e)=>updateConfig(`sp.slabs.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
                             <input placeholder="Label" value={s.label} onChange={(e)=>updateConfig(`sp.slabs.${i}.label`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
                             <button onClick={() => removeConfigItem('sp.slabs', i)} className="text-red-400"><Trash2 size={14}/></button>
@@ -393,11 +448,9 @@ const IncentiveContent = () => {
                          </div>
                     ))}
                 </div>
-                {/* ... Params ... */}
             </>
         )}
 
-        {/* ... Other Tabs using safe mapping: (array || []).map ... */}
         {activeTab === 'TB' && (
             <>
                 <div className="flex justify-between items-center mb-2">
@@ -426,7 +479,38 @@ const IncentiveContent = () => {
                 ))}
             </>
         )}
-        {/* ... Rest of tabs similarly protected ... */}
+
+        {activeTab === 'WR' && (
+            <>
+                <div className="flex justify-between items-center mb-2">
+                    <h4 className="font-bold text-sm text-blue-600">Wearables Config</h4>
+                    <button onClick={() => addConfigItem('wr.slabs', {name:'New', rate:0, keys:''})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                </div>
+                {(incConfig.wr?.slabs || []).map((s, i) => (
+                    <div key={i} className="flex gap-2 mb-2 items-center">
+                        <input value={s.name} onChange={(e)=>updateConfig(`wr.slabs.${i}.name`, e.target.value)} className="w-1/2 p-2 border rounded text-xs" placeholder="Model" />
+                        <input type="number" value={s.rate} onChange={(e)=>updateConfig(`wr.slabs.${i}.rate`, e.target.value)} className="w-1/4 p-2 border rounded text-xs" placeholder="Rate" />
+                        <button onClick={() => removeConfigItem('wr.slabs', i)} className="text-red-400"><Trash2 size={14}/></button>
+                    </div>
+                ))}
+            </>
+        )}
+
+        {activeTab === 'NPC' && (
+             <>
+                 <div className="flex justify-between items-center mb-2">
+                     <h4 className="font-bold text-sm text-blue-600">Note PC Config</h4>
+                     <button onClick={() => addConfigItem('npc.slabs', {name:'New', rate:0})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                 </div>
+                 {(incConfig.npc?.slabs || []).map((s, i) => (
+                     <div key={i} className="flex gap-2 mb-2 items-center">
+                         <input value={s.name} onChange={(e)=>updateConfig(`npc.slabs.${i}.name`, e.target.value)} className="w-1/2 p-2 border rounded text-xs" placeholder="Model" />
+                         <input type="number" value={s.rate} onChange={(e)=>updateConfig(`npc.slabs.${i}.rate`, e.target.value)} className="w-1/4 p-2 border rounded text-xs" placeholder="Rate" />
+                         <button onClick={() => removeConfigItem('npc.slabs', i)} className="text-red-400"><Trash2 size={14}/></button>
+                     </div>
+                 ))}
+             </>
+        )}
        </div>
     </div>
   );
@@ -460,17 +544,17 @@ const IncentiveContent = () => {
             </div>
         </div>
 
-        {/* Samsung Estimated Incentive Card */}
+        {/* Tentative PLI Card */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-700 text-white p-4 rounded-2xl shadow-lg relative overflow-hidden">
              <div className="absolute top-0 right-0 p-4 opacity-20"><BarChart2 size={64}/></div>
-             <h3 className="font-bold text-sm opacity-80 mb-2">Samsung Auto-Incentive (Est.)</h3>
+             <h3 className="font-bold text-sm opacity-80 mb-2">Tentative PLI (Est.)</h3>
              <div className="flex justify-between items-end mb-2">
                  <div>
-                     <div className="text-3xl font-bold">₹{samsungIncentive.totalInc.toLocaleString()}</div>
-                     <div className="text-xs opacity-80">Val: ₹{samsungIncentive.totalVal.toLocaleString()} | Slab: ₹{samsungIncentive.slabInc.toLocaleString()}</div>
+                     <div className="text-3xl font-bold">₹{samsungIncentive.slabInc.toLocaleString()}</div>
+                     <div className="text-xs opacity-80">Total Value: ₹{samsungIncentive.totalVal.toLocaleString()}</div>
                  </div>
                  <div className="text-right">
-                     <label className="text-[10px] uppercase font-bold opacity-70 block">PLI Add-on</label>
+                     <label className="text-[10px] uppercase font-bold opacity-70 block">PLI Adjustment</label>
                      <input
                         type="number"
                         value={meta.pli}
@@ -528,7 +612,7 @@ const IncentiveContent = () => {
                  <div key={i} className="flex gap-2 mb-2 items-center">
                      <select value={r.rate} onChange={(e)=>updRow('wr', i, 'rate', e.target.value)} className="flex-1 text-xs p-2 rounded border dark:bg-slate-900 dark:text-white">
                          <option value="0">Select Model</option>
-                         {(incConfig.wr || []).map((w, idx) => <option key={idx} value={w.rate}>{w.name} ({w.rate})</option>)}
+                         {(incConfig.wr?.slabs || []).map((w, idx) => <option key={idx} value={w.rate}>{w.name} ({w.rate})</option>)}
                      </select>
                      <input type="number" value={r.qty} onChange={(e)=>updRow('wr', i, 'qty', e.target.value)} className="w-14 text-center text-xs p-2 rounded border dark:bg-slate-900 dark:text-white" />
                      <button onClick={() => delRow('wr', i)} className="text-red-400"><Trash2 size={14}/></button>
@@ -592,7 +676,7 @@ const IncentiveContent = () => {
                  <div key={i} className="flex gap-2 mb-2 items-center">
                      <select value={r.rate} onChange={(e)=>updRow('npc', i, 'rate', e.target.value)} className="flex-1 text-xs p-2 rounded border dark:bg-slate-900 dark:text-white">
                          <option value="0">Select Model</option>
-                         {(incConfig.npc || []).map((n, idx) => <option key={idx} value={n.rate}>{n.name} ({n.rate})</option>)}
+                         {(incConfig.npc?.slabs || []).map((n, idx) => <option key={idx} value={n.rate}>{n.name} ({n.rate})</option>)}
                      </select>
                      <input type="number" value={r.qty} onChange={(e)=>updRow('npc', i, 'qty', e.target.value)} className="w-14 text-center text-xs p-2 rounded border dark:bg-slate-900 dark:text-white" />
                      <button onClick={() => delRow('npc', i)} className="text-red-400"><Trash2 size={14}/></button>
@@ -632,6 +716,11 @@ const IncentiveContent = () => {
                  <div className="flex justify-between items-center text-xs text-slate-500 mt-1">
                      <span>Base Target: {meta.accBase || ((rows.sp||[]).reduce((a,c)=>a+(c.qty* (c.fm?(incConfig.sp?.fm_mult||2):1)*25),0) || 0)}</span>
                      <span className="text-emerald-600 font-bold">Payout: ₹{Math.floor(result.logs.find(l=>l.c==='Accessories')?.v || 0)}</span>
+                 </div>
+                 {/* Misc / Other Section */}
+                 <div className="mt-2 pt-2 border-t border-slate-100">
+                     <label className="text-xs text-slate-400">Misc. Incentive / Adjustment</label>
+                     <input type="number" value={incConfig.misc?.amount || 0} onChange={(e)=>updateConfig('misc.amount', e.target.value)} className="w-full p-2 border rounded text-sm font-bold dark:bg-slate-900 dark:text-white" />
                  </div>
              </div>
         </div>
