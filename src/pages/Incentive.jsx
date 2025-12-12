@@ -50,7 +50,7 @@ const IncentiveContent = () => {
   const [meta, setMeta] = useState({
       k_ff7: 0, t_ff7: 'low', k_s25: 0, t_s25: 'low',
       accVal: 0, accBase: 0, target: 50, channel: 'standard', status: 'existing',
-      pli: 6000
+      pli: 0
   });
   const [result, setResult] = useState({ logs: [], grand: 0, spQ: 0, ach: 0 });
   const [samsungIncentive, setSamsungIncentive] = useState({ totalVal: 0, slabInc: 0, totalInc: 0 });
@@ -84,12 +84,12 @@ const IncentiveContent = () => {
 
           // 1. Filter for Samsung
           let totalVal = 0;
-          const currentMonth = new Date().getMonth();
-          const currentYear = new Date().getFullYear();
+          const today = new Date();
+          // Use string prefix for robust month matching (YYYY-MM)
+          const currentMonthStr = today.toISOString().slice(0, 7);
 
           Object.keys(sales).forEach(dateStr => {
-              const d = new Date(dateStr);
-              if(d.getMonth() === currentMonth && d.getFullYear() === currentYear) {
+              if (dateStr.startsWith(currentMonthStr)) {
                   const entry = sales[dateStr];
                   if(entry && entry.entries && Array.isArray(entry.entries)) {
                       entry.entries.forEach(e => {
@@ -467,7 +467,7 @@ const IncentiveContent = () => {
              <div className="flex justify-between items-end mb-2">
                  <div>
                      <div className="text-3xl font-bold">₹{samsungIncentive.totalInc.toLocaleString()}</div>
-                     <div className="text-xs opacity-80">Val: ₹{(samsungIncentive.totalVal/100000).toFixed(2)}L | Slab: {samsungIncentive.slabInc}</div>
+                     <div className="text-xs opacity-80">Val: ₹{samsungIncentive.totalVal.toLocaleString()} | Slab: ₹{samsungIncentive.slabInc.toLocaleString()}</div>
                  </div>
                  <div className="text-right">
                      <label className="text-[10px] uppercase font-bold opacity-70 block">PLI Add-on</label>
