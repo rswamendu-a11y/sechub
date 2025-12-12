@@ -241,9 +241,16 @@ const IncentiveContent = () => {
 
           // --- Wearables ---
           let wrTot=0; (rows.wr || []).forEach(r => wrTot += (r.qty||0)*r.rate);
+          // Check for Volume Slabs if items doesn't cover it (Hybrid approach)
+          // Currently WR is purely item based in UI, but if user adds slabs in config, we could support it.
+          // For now, simple sum.
           logs.push({c:"Wearables", n:"", v:wrTot});
 
           let comb = spFin + wrTot;
+          // For Grand Total Potential, we want (spRaw + wrTot) before caps/gates if possible.
+          // User asked for "Potential Earnings (spRaw/Accumulated values) before monthly volume gates".
+          let combPot = spRaw + wrTot;
+
           if(comb > (c.caps?.global || 75000)) { comb = c.caps.global; logs.push({c:"Global Cap", n:"Max 75k applied", v:0}); }
 
           // --- Care+ ---
@@ -260,6 +267,10 @@ const IncentiveContent = () => {
 
           let cpVol = cpTot;
           if(cpQ>=8) cpVol*=1.2;
+
+          // Potential ignores the <3 gate
+          let cpPot = cpVol + kickTot;
+
           if(cpQ>0 && cpQ<3) { cpVol=0; logs.push({c:"Care+", n:"Gate < 3", v:0}); }
 
           let cpFinal = cpVol + kickTot;
@@ -293,7 +304,25 @@ const IncentiveContent = () => {
           }
 
           const pli = samsungIncentive.slabInc || 0;
-          let grand = pli + comb + tbFin + npcFin + cpFinal + bunFin + accTot + (c.misc?.amount || 0) + (meta.pli || 0);
+
+          // GRAND TOTAL: Use Potential values (spRaw, cpPot) and ignore caps/gates where applicable for "Accumulated" view.
+          // Note: tbFin, npcFin, bunFin are capped values. Since they are usually per-unit or small caps, we might keep them or use Totals.
+          // User asked for "Accumulated values before monthly volume gates".
+          // SP has the main volume gate. CP has a small volume gate.
+          // We will use spRaw instead of spFin.
+          // We will use cpPot instead of cpFinal.
+          // We will use tbTot, npcTot, bunTot (uncapped) or keep caps? "Accumulated values". Caps are usually hard limits.
+          // Let's use the Raw Totals for specific categories if that's what "Potential" implies.
+          // However, usually caps are "hard". Gates are "conditional".
+          // I will use spRaw + wrTot (combPot) + tbTot + npcTot + cpPot + bunTot + accTot + misc + pli.
+          // This represents "Total Earnings Generated" regardless of gates/caps.
+
+          let grand = pli + combPot + tbTot + npcTot + cpPot + bunTot + accTot + (c.misc?.amount || 0) + (meta.pli || 0);
+
+          // Check if user wants "Potential before GATES" but respecting CAPS?
+          // "Potential Earnings (spRaw/Accumulated values) before monthly volume gates"
+          // I'll stick to uncapped spRaw/wrTot but maybe respect category caps if they aren't "monthly volume gates"?
+          // To be safe and show "Max Potential", I'll use the Raw values.
 
           setResult({ logs, grand, spQ, ach: (ach*100).toFixed(0) });
       } catch (error) {
@@ -311,7 +340,7 @@ const IncentiveContent = () => {
       const rows = result.logs.map(l => [l.c, l.n, l.v]);
       rows.push(['PLI (Auto)', 'Tentative', samsungIncentive.slabInc]);
       rows.push(['PLI (Adj)', 'Manual', meta.pli || 0]);
-      rows.push(['TOTAL', '', result.grand]);
+      rows.push(['TOTAL (Potential)', 'Before Gates', result.grand]);
 
       doc.autoTable({
           startY: 35,
@@ -365,6 +394,7 @@ const IncentiveContent = () => {
         const parts = path.split('.');
         let obj = newConfig;
         for (let i = 0; i < parts.length; i++) {
+            if (!obj[parts[i]]) obj[parts[i]] = []; // Ensure array exists
             obj = obj[parts[i]];
         }
         if(Array.isArray(obj)) {
@@ -478,7 +508,7 @@ const IncentiveContent = () => {
         {activeTab === 'WR' && (
             <>
                 <div className="flex justify-between items-center mb-2">
-                    <h4 className="font-bold text-sm text-blue-600">Wearables Config</h4>
+                    <h4 className="font-bold text-sm text-blue-600">Items (Model Based)</h4>
                     <button onClick={() => addConfigItem('wearables.items', {name:'New', rate:0, keys:''})} className="text-emerald-500"><PlusCircle size={16}/></button>
                 </div>
                 {(incConfig.wearables?.items || []).map((s, i) => (
@@ -487,6 +517,18 @@ const IncentiveContent = () => {
                         <input type="number" value={s.rate} onChange={(e)=>updateConfig(`wearables.items.${i}.rate`, e.target.value)} className="w-1/4 p-2 border rounded text-xs" placeholder="Rate" />
                         <button onClick={() => removeConfigItem('wearables.items', i)} className="text-red-400"><Trash2 size={14}/></button>
                     </div>
+                ))}
+
+                <div className="flex justify-between items-center mt-4 mb-2">
+                    <h4 className="font-bold text-sm text-blue-600">Volume Slabs</h4>
+                    <button onClick={() => addConfigItem('wearables.slabs', {min:0, rate:0})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                </div>
+                {(incConfig.wearables?.slabs || []).map((s, i) => (
+                     <div key={i} className="flex gap-2 mb-2 items-center">
+                         <input type="number" value={s.min} onChange={(e)=>updateConfig(`wearables.slabs.${i}.min`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" placeholder="Min Qty" />
+                         <input type="number" value={s.rate} onChange={(e)=>updateConfig(`wearables.slabs.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" placeholder="Rate/Unit" />
+                         <button onClick={() => removeConfigItem('wearables.slabs', i)} className="text-red-400"><Trash2 size={14}/></button>
+                     </div>
                 ))}
             </>
         )}
@@ -505,13 +547,45 @@ const IncentiveContent = () => {
                         <button onClick={() => removeConfigItem('carePlus.items', i)} className="text-red-400"><Trash2 size={14}/></button>
                     </div>
                 ))}
+
+                <div className="flex justify-between items-center mt-4 mb-2">
+                    <h4 className="font-bold text-sm text-blue-600">Kicker Rates</h4>
+                </div>
+                {/* FF7 Kickers */}
+                <div className="mb-2 p-2 border rounded">
+                    <div className="text-xs font-bold mb-1">FF Series</div>
+                    <div className="flex gap-2">
+                        <div className="flex-1">
+                            <label className="text-[10px]">High Target Rate</label>
+                            <input type="number" value={incConfig.carePlus?.kickers?.ff7?.h || 0} onChange={(e)=>updateConfig('carePlus.kickers.ff7.h', e.target.value)} className="w-full p-1 text-xs border rounded" />
+                        </div>
+                        <div className="flex-1">
+                            <label className="text-[10px]">Low Target Rate</label>
+                            <input type="number" value={incConfig.carePlus?.kickers?.ff7?.l || 0} onChange={(e)=>updateConfig('carePlus.kickers.ff7.l', e.target.value)} className="w-full p-1 text-xs border rounded" />
+                        </div>
+                    </div>
+                </div>
+                {/* S25 Kickers */}
+                <div className="mb-2 p-2 border rounded">
+                    <div className="text-xs font-bold mb-1">S Series</div>
+                    <div className="flex gap-2">
+                        <div className="flex-1">
+                            <label className="text-[10px]">High Target Rate</label>
+                            <input type="number" value={incConfig.carePlus?.kickers?.s25?.h || 0} onChange={(e)=>updateConfig('carePlus.kickers.s25.h', e.target.value)} className="w-full p-1 text-xs border rounded" />
+                        </div>
+                        <div className="flex-1">
+                            <label className="text-[10px]">Low Target Rate</label>
+                            <input type="number" value={incConfig.carePlus?.kickers?.s25?.l || 0} onChange={(e)=>updateConfig('carePlus.kickers.s25.l', e.target.value)} className="w-full p-1 text-xs border rounded" />
+                        </div>
+                    </div>
+                </div>
             </>
         )}
 
         {activeTab === 'NPC' && (
              <>
                  <div className="flex justify-between items-center mb-2">
-                     <h4 className="font-bold text-sm text-blue-600">Note PC Config</h4>
+                     <h4 className="font-bold text-sm text-blue-600">Items (Model Based)</h4>
                      <button onClick={() => addConfigItem('notePC.items', {name:'New', rate:0})} className="text-emerald-500"><PlusCircle size={16}/></button>
                  </div>
                  {(incConfig.notePC?.items || []).map((s, i) => (
@@ -521,13 +595,25 @@ const IncentiveContent = () => {
                          <button onClick={() => removeConfigItem('notePC.items', i)} className="text-red-400"><Trash2 size={14}/></button>
                      </div>
                  ))}
+
+                 <div className="flex justify-between items-center mt-4 mb-2">
+                    <h4 className="font-bold text-sm text-blue-600">Volume Slabs</h4>
+                    <button onClick={() => addConfigItem('notePC.slabs', {min:0, rate:0})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                </div>
+                {(incConfig.notePC?.slabs || []).map((s, i) => (
+                     <div key={i} className="flex gap-2 mb-2 items-center">
+                         <input type="number" value={s.min} onChange={(e)=>updateConfig(`notePC.slabs.${i}.min`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" placeholder="Min Qty" />
+                         <input type="number" value={s.rate} onChange={(e)=>updateConfig(`notePC.slabs.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" placeholder="Rate/Unit" />
+                         <button onClick={() => removeConfigItem('notePC.slabs', i)} className="text-red-400"><Trash2 size={14}/></button>
+                     </div>
+                ))}
              </>
         )}
 
         {activeTab === 'Bun' && (
              <>
                  <div className="flex justify-between items-center mb-2">
-                     <h4 className="font-bold text-sm text-blue-600">Bundles Config</h4>
+                     <h4 className="font-bold text-sm text-blue-600">Items (Model Based)</h4>
                      <button onClick={() => addConfigItem('bundles.items', {name:'New', rate:0})} className="text-emerald-500"><PlusCircle size={16}/></button>
                  </div>
                  {(incConfig.bundles?.items || []).map((s, i) => (
@@ -537,6 +623,18 @@ const IncentiveContent = () => {
                          <button onClick={() => removeConfigItem('bundles.items', i)} className="text-red-400"><Trash2 size={14}/></button>
                      </div>
                  ))}
+
+                 <div className="flex justify-between items-center mt-4 mb-2">
+                    <h4 className="font-bold text-sm text-blue-600">Volume Slabs</h4>
+                    <button onClick={() => addConfigItem('bundles.slabs', {min:0, rate:0})} className="text-emerald-500"><PlusCircle size={16}/></button>
+                </div>
+                {(incConfig.bundles?.slabs || []).map((s, i) => (
+                     <div key={i} className="flex gap-2 mb-2 items-center">
+                         <input type="number" value={s.min} onChange={(e)=>updateConfig(`bundles.slabs.${i}.min`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" placeholder="Min Qty" />
+                         <input type="number" value={s.rate} onChange={(e)=>updateConfig(`bundles.slabs.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" placeholder="Rate/Unit" />
+                         <button onClick={() => removeConfigItem('bundles.slabs', i)} className="text-red-400"><Trash2 size={14}/></button>
+                     </div>
+                ))}
              </>
         )}
 
