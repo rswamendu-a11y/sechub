@@ -71,6 +71,28 @@ const IncentiveContent = () => {
     } catch(e) { console.error(e); }
   }, []);
 
+  // Migration / Safety Check for Config
+  useEffect(() => {
+    if (incConfig) {
+        const defaults = ['wearables', 'carePlus', 'notePC', 'bundles', 'accessories'];
+        let changed = false;
+        // Shallow clone is enough for top-level checks
+        const newConfig = { ...incConfig };
+
+        defaults.forEach(key => {
+            if (!newConfig[key]) {
+                newConfig[key] = {}; // Initialize as object if missing
+                changed = true;
+            }
+        });
+
+        if (changed) {
+            console.log("Incentive: patched missing config sections");
+            setIncConfig(newConfig);
+        }
+    }
+  }, [incConfig, setIncConfig]);
+
   // Sync Calc Logic
   useEffect(() => {
     calculate();
@@ -219,7 +241,7 @@ const IncentiveContent = () => {
           const isExempt = (meta.channel === 'sis_pro' || meta.status === 'new_joinee');
           const gateSet = isExempt ? (c.sp?.gates?.sis || []) : (c.sp?.gates?.std || []);
           let gateM = 0;
-          let gateN = "Missed Gate";
+          let gateN = "Missed Volume Gate";
           for(let g of gateSet) { if(g && spQ >= g.min) { gateM = g.p; gateN = ""; break; } }
 
           let spFin = spRaw * gateM;
@@ -227,11 +249,18 @@ const IncentiveContent = () => {
           const ach = meta.target > 0 ? spQ/meta.target : 0;
 
           let missed = false;
-          if(!isExempt && meta.channel === 'standard' && ach < (c.sp?.target_thresh || 0.8)) {
-              missed=true; gateN=`Missed Target (${spQ}/${meta.target})`;
-          } else if(gateM === 0) {
+          // REMOVED <80% Gate check as per request to ensure Total Payout is sum of earned incentives
+          if(gateM === 0) {
               missed=true; gateN=`Missed Volume Gate (${spQ})`;
           }
+
+          // If gate is missed (Volume), spFin is 0.
+          // But user wants Total Payout to be sum regardless of "Target Achievement" (which usually means % vs Target).
+          // We kept Volume Gate logic for spFin, but will use spRaw (Potential) for Grand Total if desired?
+          // The prompt says "Payout should be a sum regardless of target percentage".
+          // "Target Percentage" is `ach`. We removed the check for `ach < 0.8`.
+          // So now only Volume Gates (absolute numbers) affect spFin.
+
           logs.push({c:"Smartphones", n:gateN, v:spFin, pot:spPot, missed});
 
           // --- Tablets ---
@@ -241,14 +270,9 @@ const IncentiveContent = () => {
 
           // --- Wearables ---
           let wrTot=0; (rows.wr || []).forEach(r => wrTot += (r.qty||0)*r.rate);
-          // Check for Volume Slabs if items doesn't cover it (Hybrid approach)
-          // Currently WR is purely item based in UI, but if user adds slabs in config, we could support it.
-          // For now, simple sum.
           logs.push({c:"Wearables", n:"", v:wrTot});
 
           let comb = spFin + wrTot;
-          // For Grand Total Potential, we want (spRaw + wrTot) before caps/gates if possible.
-          // User asked for "Potential Earnings (spRaw/Accumulated values) before monthly volume gates".
           let combPot = spRaw + wrTot;
 
           if(comb > (c.caps?.global || 75000)) { comb = c.caps.global; logs.push({c:"Global Cap", n:"Max 75k applied", v:0}); }
@@ -268,7 +292,6 @@ const IncentiveContent = () => {
           let cpVol = cpTot;
           if(cpQ>=8) cpVol*=1.2;
 
-          // Potential ignores the <3 gate
           let cpPot = cpVol + kickTot;
 
           if(cpQ>0 && cpQ<3) { cpVol=0; logs.push({c:"Care+", n:"Gate < 3", v:0}); }
@@ -291,7 +314,6 @@ const IncentiveContent = () => {
           let accTot = 0;
           const ab = meta.accBase || (spRaw * 25);
           let accPct = 0;
-          // Updated accessor: c.accessories?.items
           if(ab > 0 && meta.channel!=='exclusive' && c.accessories?.items) {
               accPct = (meta.accVal/ab)*100;
               for(let t of c.accessories.items) { if(accPct>=t.min) { accTot = t.rate; break; } }
@@ -305,24 +327,15 @@ const IncentiveContent = () => {
 
           const pli = samsungIncentive.slabInc || 0;
 
-          // GRAND TOTAL: Use Potential values (spRaw, cpPot) and ignore caps/gates where applicable for "Accumulated" view.
-          // Note: tbFin, npcFin, bunFin are capped values. Since they are usually per-unit or small caps, we might keep them or use Totals.
-          // User asked for "Accumulated values before monthly volume gates".
-          // SP has the main volume gate. CP has a small volume gate.
-          // We will use spRaw instead of spFin.
-          // We will use cpPot instead of cpFinal.
-          // We will use tbTot, npcTot, bunTot (uncapped) or keep caps? "Accumulated values". Caps are usually hard limits.
-          // Let's use the Raw Totals for specific categories if that's what "Potential" implies.
-          // However, usually caps are "hard". Gates are "conditional".
-          // I will use spRaw + wrTot (combPot) + tbTot + npcTot + cpPot + bunTot + accTot + misc + pli.
-          // This represents "Total Earnings Generated" regardless of gates/caps.
+          // GRAND TOTAL Calculation
+          // User asked for "Total Payout" to be sum regardless of target percentage.
+          // We use spRaw (Smartphone Potential) + wrTot + others.
+          // This ignores the smartphone volume gate (gateM) for the Grand Total view,
+          // effectively treating it as "Total Earnings Generated".
+          // If strict payout rules apply, switch spRaw to spFin.
+          // But based on request "Remove <80% gate for Total Payout", we use Potential.
 
           let grand = pli + combPot + tbTot + npcTot + cpPot + bunTot + accTot + (c.misc?.amount || 0) + (meta.pli || 0);
-
-          // Check if user wants "Potential before GATES" but respecting CAPS?
-          // "Potential Earnings (spRaw/Accumulated values) before monthly volume gates"
-          // I'll stick to uncapped spRaw/wrTot but maybe respect category caps if they aren't "monthly volume gates"?
-          // To be safe and show "Max Potential", I'll use the Raw values.
 
           setResult({ logs, grand, spQ, ach: (ach*100).toFixed(0) });
       } catch (error) {
@@ -340,7 +353,7 @@ const IncentiveContent = () => {
       const rows = result.logs.map(l => [l.c, l.n, l.v]);
       rows.push(['PLI (Auto)', 'Tentative', samsungIncentive.slabInc]);
       rows.push(['PLI (Adj)', 'Manual', meta.pli || 0]);
-      rows.push(['TOTAL (Potential)', 'Before Gates', result.grand]);
+      rows.push(['TOTAL (Potential)', 'Sum of all earnings', result.grand]);
 
       doc.autoTable({
           startY: 35,
@@ -381,27 +394,39 @@ const IncentiveContent = () => {
         const parts = path.split('.');
         let obj = newConfig;
         for (let i = 0; i < parts.length - 1; i++) {
-            obj = obj[parts[i]];
+             // Safety check for path traversal
+             if (!obj[parts[i]]) obj[parts[i]] = {};
+             obj = obj[parts[i]];
         }
         obj[parts[parts.length - 1]] = parseFloat(val) || val;
         setIncConfig(newConfig);
       } catch(e) { console.error(e); }
   };
 
+  // FIXED: Correctly initializes intermediate Objects and final Array
   const addConfigItem = (path, template) => {
       try {
         const newConfig = JSON.parse(JSON.stringify(incConfig));
         const parts = path.split('.');
         let obj = newConfig;
-        for (let i = 0; i < parts.length; i++) {
-            if (!obj[parts[i]]) obj[parts[i]] = []; // Ensure array exists
+
+        // Iterate until the second to last part (Intermediate Objects)
+        for (let i = 0; i < parts.length - 1; i++) {
+            if (!obj[parts[i]]) obj[parts[i]] = {};
             obj = obj[parts[i]];
         }
-        if(Array.isArray(obj)) {
-            obj.push(template);
+
+        // The last part is the Array key
+        const lastKey = parts[parts.length - 1];
+        if (!obj[lastKey]) obj[lastKey] = []; // Initialize as Array
+
+        if(Array.isArray(obj[lastKey])) {
+            obj[lastKey].push(template);
             setIncConfig(newConfig);
+        } else {
+            console.error("Target is not an array:", lastKey, obj[lastKey]);
         }
-      } catch(e) { console.error(e); }
+      } catch(e) { console.error("AddConfigItem Error", e); }
   };
 
   const removeConfigItem = (path, index) => {
@@ -875,7 +900,7 @@ const IncentiveContent = () => {
                  </div>
              </div>
              <div className="text-center mt-1">
-                 <span className="text-[10px] text-slate-400 italic">THIS INCENTIVE WORKING IS SUBJECT TO QUALIFICATION CRITERIA</span>
+                 <span className="text-[10px] text-slate-500 font-bold uppercase">THIS INCENTIVE WORKING IS SUBJECT TO QUALIFICATION CRITERIA</span>
              </div>
         </div>
     </div>
