@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - '*' # Trigger on all branches to ensure APK is built for review
   workflow_dispatch:
 
 jobs:
