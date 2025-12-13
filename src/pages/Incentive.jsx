@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { Settings, Trash2, PlusCircle, Save, RotateCcw, Download, ChevronRight, X, Info, BarChart2 } from 'lucide-react';
+import { Settings, Trash2, PlusCircle, Save, RotateCcw, Download, ChevronRight, X, Info, BarChart2, ShieldCheck } from 'lucide-react';
 import jsPDF from 'jspdf';
 import 'jspdf-autotable';
 import { Filesystem, Directory } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import Config from './Config';
 
 class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -49,7 +50,7 @@ const IncentiveContent = () => {
   const [rows, setRows] = useState({ sp: [], tb: [], wr: [], cp: [], npc: [], bun: [] });
   const [meta, setMeta] = useState({
       k_ff7: 0, t_ff7: 'low', k_s25: 0, t_s25: 'low',
-      accVal: 0, accBase: 0, target: 35, channel: 'standard', status: 'existing',
+      accVal: 0, accBaseOverride: '', target: 35, channel: 'standard', status: 'existing',
       pli: 0, ringVol: 0
   });
   const [result, setResult] = useState({ logs: [], grand: 0, spQ: 0, ach: 0 });
@@ -63,7 +64,7 @@ const IncentiveContent = () => {
                 sp: [{ qty: 1, rate: 0, fm: false }],
                 tb: [{ qty: 1, rate: 0, fm: false }],
                 wr: [{ qty: 1, rate: 0, fm: false }],
-                cp: [{ qty: 1, rate: 0, fm: false }],
+                cp: [{ qty: 1, rate: 0, fm: false, pm: false }], // pm = ProtectMax
                 npc: [{ qty: 1, rate: 0, fm: false }],
                 bun: [{ qty: 1, rate: 0, fm: false }]
             });
@@ -81,10 +82,17 @@ const IncentiveContent = () => {
 
         defaults.forEach(key => {
             if (!newConfig[key]) {
-                newConfig[key] = {}; // Initialize as object if missing
+                newConfig[key] = {};
                 changed = true;
             }
         });
+
+        // Ensure Care+ Vol Gate exists
+        if (!newConfig.carePlus?.volGate) {
+             if(!newConfig.carePlus) newConfig.carePlus = {};
+             newConfig.carePlus.volGate = { min: 8, mult: 1.2 };
+             changed = true;
+        }
 
         if (changed) {
             console.log("Incentive: patched missing config sections");
@@ -203,7 +211,7 @@ const IncentiveContent = () => {
 
   const addRow = (key) => {
       try {
-        setRows({ ...rows, [key]: [...(rows[key] || []), { qty: 1, rate: 0, fm: false }] });
+        setRows({ ...rows, [key]: [...(rows[key] || []), { qty: 1, rate: 0, fm: false, pm: false }] });
       } catch(e) { console.error(e); }
   };
 
@@ -241,7 +249,6 @@ const IncentiveContent = () => {
   const calculateRingPayout = (count) => {
       if (!incConfig?.wearables?.ring?.slabs) return 0;
       let rate = 0;
-      // Slabs are sorted descending by min in DEFAULTS (3, 2, 1)
       for (let s of incConfig.wearables.ring.slabs) {
           if (count >= s.min) {
               rate = s.rate;
@@ -270,28 +277,12 @@ const IncentiveContent = () => {
           let gateN = "Missed Volume Gate";
           for(let g of gateSet) { if(g && spQ >= g.min) { gateM = g.p; gateN = ""; break; } }
 
-          // SURGERY: BYPASS GATE LOGIC FOR PAYOUT
-          // The user wants 'spFin' to be the potential/raw earning even if gate is missed.
-          // We keep 'gateM' calculation only for the Log/Display message but force payout.
-          let spFin = spRaw; // Bypassed Multiplier: was spRaw * gateM
-
+          let spFin = spRaw; // Bypassed Multiplier logic for payout
           let spPot = spRaw;
           const ach = meta.target > 0 ? spQ/meta.target : 0;
+          let missed = gateM === 0;
+          if(missed) gateN = `Missed Volume Gate (${spQ}) - (Ignored)`;
 
-          let missed = false;
-          if(gateM === 0) {
-              // We still Log it as missed for visual info, but value is spFin (Money Unlocked)
-              missed=true; gateN=`Missed Volume Gate (${spQ}) - (Ignored)`;
-          } else {
-             // If gate hit, apply multiplier if needed?
-             // User said "DISABLE MATH GATE... Return raw sum".
-             // If gate multiplier > 1 (rare), we might miss it, but standard gates are <= 1 usually or exactly 1.
-             // Actually, usually gates are 0.6, 0.75, 1.0.
-             // If the user wants "Raw Sum" -> "Sell 1 phone, see money", they want NO multiplier penalty.
-             // So spFin = spRaw is correct.
-          }
-
-          // Ensure logs reflect the "Ignored" status visually
           logs.push({c:"Smartphones", n:gateN, v:spFin, pot:spPot, missed});
 
           // --- Tablets ---
@@ -301,38 +292,47 @@ const IncentiveContent = () => {
 
           // --- Wearables ---
           let wrTot=0; (rows.wr || []).forEach(r => wrTot += (r.qty||0)*r.rate);
-
-          // Add Ring Payout
           const ringPayout = calculateRingPayout(meta.ringVol || 0);
           wrTot += ringPayout;
           if (meta.ringVol > 0) logs.push({c:"Rings", n:`${meta.ringVol} Units`, v:ringPayout});
-
           logs.push({c:"Wearables", n:"(Incl. Rings)", v:wrTot});
 
           let comb = spFin + wrTot;
           if(comb > (c.caps?.global || 75000)) { comb = c.caps.global; logs.push({c:"Global Cap", n:"Max 75k applied", v:0}); }
 
-          // --- Care+ ---
+          // --- Care+ (With ProtectMax and Vol Kicker) ---
           let cpTot=0, cpQ=0;
-          (rows.cp || []).forEach(r => { cpQ+=r.qty; cpTot+=(r.qty||0)*r.rate; });
+          (rows.cp || []).forEach(r => {
+              cpQ+=r.qty;
+              let rVal = (r.qty||0)*r.rate;
+              if (r.pm) rVal = rVal * 1.25; // ProtectMax 1.25x
+              cpTot += rVal;
+          });
 
           let kickTot = 0;
-          // FF Series Kicker
+          // Kickers
           if(c.carePlus?.kickers?.ffSeries) {
             if(meta.k_ff7 > 0) kickTot += meta.k_ff7 * (meta.t_ff7==='high' ? (c.carePlus.kickers.ffSeries.h||0) : (c.carePlus.kickers.ffSeries.l||0));
           }
-          // S Series Kicker
           if(c.carePlus?.kickers?.sSeries) {
             if(meta.k_s25 > 0) kickTot += meta.k_s25 * (meta.t_s25==='high' ? (c.carePlus.kickers.sSeries.h||0) : (c.carePlus.kickers.sSeries.l||0));
           }
 
+          // Volume Kicker
           let cpVol = cpTot;
-          if(cpQ>=8) cpVol*=1.2;
+          const volGateMin = c.carePlus?.volGate?.min || 8;
+          const volGateMult = c.carePlus?.volGate?.mult || 1.2;
+
+          let volKickerApplied = false;
+          if(cpQ >= volGateMin) {
+              cpVol *= volGateMult;
+              volKickerApplied = true;
+          }
 
           if(cpQ>0 && cpQ<3) { cpVol=0; logs.push({c:"Care+", n:"Gate < 3", v:0}); }
 
           let cpFinal = cpVol + kickTot;
-          logs.push({c:"Care+", n:`Vol: ${cpQ}, Kickers: ${kickTot}`, v:cpFinal});
+          logs.push({c:"Care+", n:`Vol: ${cpQ}, Kickers: ${kickTot}${volKickerApplied ? ', Vol Kicker Applied' : ''}`, v:cpFinal});
 
           // --- Note PC ---
           let npcTot=0; (rows.npc || []).forEach(r => npcTot += (r.qty||0)*r.rate);
@@ -340,14 +340,17 @@ const IncentiveContent = () => {
           logs.push({c:"Note PC", n:npcTot>npcFin?"Capped":"", v:npcFin});
 
           // --- Bundles ---
-          let bunTot = 0;
-          (rows.bun || []).forEach(r => bunTot += (r.qty||0)*r.rate);
+          let bunTot = 0; (rows.bun || []).forEach(r => bunTot += (r.qty||0)*r.rate);
           let bunFin = Math.min(bunTot, c.caps?.bun || 5000);
           logs.push({c:"Bundles", n:bunTot>bunFin?"Capped":"", v:bunFin});
 
           // --- Accessories ---
           let accTot = 0;
-          const ab = meta.accBase || (spRaw * 25);
+          // Use Override if available, else calc
+          const ab = (meta.accBaseOverride !== undefined && meta.accBaseOverride !== '')
+                      ? parseFloat(meta.accBaseOverride)
+                      : (spRaw * 25);
+
           let accPct = 0;
           if(ab > 0 && meta.channel!=='exclusive' && c.accessories?.items) {
               accPct = (meta.accVal/ab)*100;
@@ -363,7 +366,7 @@ const IncentiveContent = () => {
           const tentPLI = samsungIncentive.slabInc || 0;
           const pliAdj = meta.pli || 0;
 
-          // --- TOTAL PAYOUT CALCULATION (SUMMATION) ---
+          // --- TOTAL ---
           const totalPayout =
             (Number(tentPLI) || 0) +
             (Number(pliAdj) || 0) +
@@ -445,273 +448,7 @@ const IncentiveContent = () => {
       } catch(e) { console.error(e); }
   };
 
-  const updateConfigObject = (path, field, val) => {
-      try {
-        const newConfig = JSON.parse(JSON.stringify(incConfig));
-        // Simple dot notation traversal could be complex, sticking to specific cases or deep clone modification
-        // For Kickers: path = 'carePlus.kickers.ffSeries'
-        const parts = path.split('.');
-        let obj = newConfig;
-        for (let i = 0; i < parts.length; i++) {
-             obj = obj[parts[i]];
-        }
-        if (obj) {
-            obj[field] = parseFloat(val) || 0;
-            setIncConfig(newConfig);
-        }
-      } catch (e) { console.error(e); }
-  };
-
-  const updateConfigLegacy = (path, val) => {
-      try {
-        const newConfig = JSON.parse(JSON.stringify(incConfig));
-        const parts = path.split('.');
-        let obj = newConfig;
-        for (let i = 0; i < parts.length - 1; i++) {
-             if (!obj[parts[i]]) obj[parts[i]] = {};
-             obj = obj[parts[i]];
-        }
-        obj[parts[parts.length - 1]] = parseFloat(val) || val;
-        setIncConfig(newConfig);
-      } catch(e) { console.error(e); }
-  };
-
-  const addConfigItem = (key) => {
-      const newConfig = JSON.parse(JSON.stringify(incConfig));
-      const template = { name: 'New', amount: 0 };
-
-      if (key === 'wearables') newConfig.wearables.models.push(template);
-      else if (key === 'carePlus') newConfig.carePlus.slabs.push(template);
-      else if (key === 'notePC') newConfig.notePC.models.push(template);
-      else if (key === 'bundles') newConfig.bundles.items.push(template);
-
-      setIncConfig(newConfig);
-  };
-
-  const addConfigItemLegacy = (path, template) => {
-      try {
-        const newConfig = JSON.parse(JSON.stringify(incConfig));
-        const parts = path.split('.');
-        let obj = newConfig;
-        for (let i = 0; i < parts.length - 1; i++) {
-            if (!obj[parts[i]]) obj[parts[i]] = {};
-            obj = obj[parts[i]];
-        }
-        const lastKey = parts[parts.length - 1];
-        if (!obj[lastKey]) obj[lastKey] = [];
-        obj[lastKey].push(template);
-        setIncConfig(newConfig);
-      } catch(e) { console.error(e); }
-  };
-
-  const removeConfigItemLegacy = (path, index) => {
-      try {
-        const newConfig = JSON.parse(JSON.stringify(incConfig));
-        const parts = path.split('.');
-        let obj = newConfig;
-        for (let i = 0; i < parts.length; i++) {
-            obj = obj[parts[i]];
-        }
-        if(Array.isArray(obj)) {
-            obj.splice(index, 1);
-            setIncConfig(newConfig);
-        }
-      } catch(e) { console.error(e); }
-  };
-
-  const ConfigSection = () => {
-    // Helper Renderers for Legacy components (SP/TB)
-    const renderSmartphoneConfig = () => (
-        <>
-            <div>
-                <div className="flex justify-between items-center mb-2">
-                    <h4 className="font-bold text-sm text-blue-600">Slabs (Dealer Price)</h4>
-                    <button onClick={() => addConfigItemLegacy('sp.slabs', {min:0, rate:0, label:'New'})} className="text-emerald-500"><PlusCircle size={16}/></button>
-                </div>
-                {(incConfig.sp?.slabs || []).map((s, i) => (
-                    <div key={i} className="flex gap-2 mb-2 items-center">
-                        <input placeholder="Min Price" type="number" value={s.min} onChange={(e)=>updateConfigLegacy(`sp.slabs.${i}.min`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
-                        <input placeholder="Rate" type="number" value={s.rate} onChange={(e)=>updateConfigLegacy(`sp.slabs.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
-                        <input placeholder="Label" value={s.label} onChange={(e)=>updateConfigLegacy(`sp.slabs.${i}.label`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
-                        <button onClick={() => removeConfigItemLegacy('sp.slabs', i)} className="text-red-400"><Trash2 size={14}/></button>
-                    </div>
-                ))}
-            </div>
-            <div>
-                <h4 className="font-bold text-sm text-blue-600 mb-2">Gates (Multiplier)</h4>
-                <div className="flex justify-between items-center mb-1">
-                    <div className="text-xs font-bold dark:text-slate-300">Standard</div>
-                    <button onClick={() => addConfigItemLegacy('sp.gates.std', {min:0, p:1.0})} className="text-emerald-500"><PlusCircle size={14}/></button>
-                </div>
-                {(incConfig.sp?.gates?.std || []).map((g, i) => (
-                     <div key={'g'+i} className="flex gap-2 mb-1 items-center">
-                         <span className="text-xs dark:text-slate-400">Min</span>
-                         <input type="number" value={g.min} onChange={(e)=>updateConfigLegacy(`sp.gates.std.${i}.min`, e.target.value)} className="w-16 p-2 border rounded text-xs" />
-                         <span className="text-xs dark:text-slate-400">Mult</span>
-                         <input type="number" value={g.p} onChange={(e)=>updateConfigLegacy(`sp.gates.std.${i}.p`, e.target.value)} className="w-16 p-2 border rounded text-xs" />
-                         <button onClick={() => removeConfigItemLegacy('sp.gates.std', i)} className="text-red-400 ml-auto"><Trash2 size={14}/></button>
-                     </div>
-                ))}
-            </div>
-        </>
-    );
-
-    const renderTabletConfig = () => (
-        <>
-            <div className="flex justify-between items-center mb-2">
-                <h4 className="font-bold text-sm text-blue-600">Volume Slabs</h4>
-                <button onClick={() => addConfigItemLegacy('tb.slabs', {min:0, rate:0, label:'New'})} className="text-emerald-500"><PlusCircle size={16}/></button>
-            </div>
-            {(incConfig.tb?.slabs || []).map((s, i) => (
-                <div key={i} className="flex gap-2 mb-2 items-center">
-                     <input type="number" value={s.min} onChange={(e)=>updateConfigLegacy(`tb.slabs.${i}.min`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" placeholder="Min" />
-                     <input type="number" value={s.rate} onChange={(e)=>updateConfigLegacy(`tb.slabs.${i}.rate`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" placeholder="Rate" />
-                     <input value={s.label} onChange={(e)=>updateConfigLegacy(`tb.slabs.${i}.label`, e.target.value)} className="w-1/3 p-2 border rounded text-xs" placeholder="Label" />
-                     <button onClick={() => removeConfigItemLegacy('tb.slabs', i)} className="text-red-400"><Trash2 size={14}/></button>
-                </div>
-            ))}
-            <div className="flex justify-between items-center mt-4 mb-2">
-                <h4 className="font-bold text-sm text-blue-600">Focus Models</h4>
-                <button onClick={() => addConfigItemLegacy('tb.focus', {name:'New Model', rate:0, keys:''})} className="text-emerald-500"><PlusCircle size={16}/></button>
-            </div>
-            {(incConfig.tb?.focus || []).map((f, i) => (
-                <div key={i} className="flex gap-2 mb-2 items-center">
-                    <input value={f.name} onChange={(e)=>updateConfigLegacy(`tb.focus.${i}.name`, e.target.value)} className="w-1/2 p-2 border rounded text-xs" placeholder="Model Name" />
-                    <input type="number" value={f.rate} onChange={(e)=>updateConfigLegacy(`tb.focus.${i}.rate`, e.target.value)} className="w-1/4 p-2 border rounded text-xs" placeholder="Rate" />
-                    <button onClick={() => removeConfigItemLegacy('tb.focus', i)} className="text-red-400"><Trash2 size={14}/></button>
-                </div>
-            ))}
-        </>
-    );
-
-    const renderContent = () => {
-      switch (activeTab) {
-        case 'SP': return renderSmartphoneConfig();
-        case 'TB': return renderTabletConfig();
-        case 'WR':
-          return (
-            <div className="space-y-4">
-                <h4 className="font-bold text-sm text-blue-600">Model Rates</h4>
-                {(incConfig.wearables?.models || []).map((item, index) => (
-                  <div key={index} className="flex gap-2">
-                    <input placeholder="Model" value={item.name} onChange={(e) => updateConfig('wearables', index, 'name', e.target.value)} className="flex-1 p-2 border rounded text-xs" />
-                    <input type="number" placeholder="Amt" value={item.amount} onChange={(e) => updateConfig('wearables', index, 'amount', e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
-                  </div>
-                ))}
-                <button onClick={() => addConfigItem('wearables')} className="text-xs bg-slate-100 dark:bg-slate-700 p-2 rounded flex items-center gap-1">+ Add</button>
-            </div>
-          );
-        case 'CP':
-          return (
-             <div className="space-y-4">
-                <h4 className="font-bold text-sm text-blue-600">Slabs</h4>
-                {(incConfig.carePlus?.slabs || []).map((item, index) => (
-                  <div key={index} className="flex gap-2">
-                    <input placeholder="Slab" value={item.name} onChange={(e) => updateConfig('carePlus', index, 'name', e.target.value)} className="flex-1 p-2 border rounded text-xs" />
-                    <input type="number" value={item.amount} onChange={(e) => updateConfig('carePlus', index, 'amount', e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
-                  </div>
-                ))}
-                <button onClick={() => addConfigItem('carePlus')} className="text-xs bg-slate-100 dark:bg-slate-700 p-2 rounded flex items-center gap-1">+ Add</button>
-
-                <h4 className="font-bold text-sm text-blue-600 mt-4">Kickers</h4>
-                <div className="grid grid-cols-2 gap-4">
-                    <div className="p-2 border rounded dark:border-slate-600">
-                        <label className="text-xs font-bold block mb-2">FF SERIES</label>
-                        <div className="flex gap-2 mb-2">
-                            <span className="text-xs w-8 py-2">Low</span>
-                            <input type="number" value={incConfig.carePlus?.kickers?.ffSeries?.l} onChange={(e) => updateConfigObject('carePlus.kickers.ffSeries', 'l', e.target.value)} className="w-full p-2 border rounded text-xs" />
-                        </div>
-                        <div className="flex gap-2">
-                            <span className="text-xs w-8 py-2">High</span>
-                            <input type="number" value={incConfig.carePlus?.kickers?.ffSeries?.h} onChange={(e) => updateConfigObject('carePlus.kickers.ffSeries', 'h', e.target.value)} className="w-full p-2 border rounded text-xs" />
-                        </div>
-                    </div>
-                    <div className="p-2 border rounded dark:border-slate-600">
-                        <label className="text-xs font-bold block mb-2">S SERIES</label>
-                        <div className="flex gap-2 mb-2">
-                            <span className="text-xs w-8 py-2">Low</span>
-                            <input type="number" value={incConfig.carePlus?.kickers?.sSeries?.l} onChange={(e) => updateConfigObject('carePlus.kickers.sSeries', 'l', e.target.value)} className="w-full p-2 border rounded text-xs" />
-                        </div>
-                        <div className="flex gap-2">
-                            <span className="text-xs w-8 py-2">High</span>
-                            <input type="number" value={incConfig.carePlus?.kickers?.sSeries?.h} onChange={(e) => updateConfigObject('carePlus.kickers.sSeries', 'h', e.target.value)} className="w-full p-2 border rounded text-xs" />
-                        </div>
-                    </div>
-                </div>
-             </div>
-          );
-        case 'NPC':
-          return (
-             <div className="space-y-4">
-                {(incConfig.notePC?.models || []).map((item, index) => (
-                  <div key={index} className="flex gap-2">
-                    <input placeholder="Model" value={item.name} onChange={(e) => updateConfig('notePC', index, 'name', e.target.value)} className="flex-1 p-2 border rounded text-xs" />
-                    <input type="number" value={item.amount} onChange={(e) => updateConfig('notePC', index, 'amount', e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
-                  </div>
-                ))}
-                <button onClick={() => addConfigItem('notePC')} className="text-xs bg-slate-100 dark:bg-slate-700 p-2 rounded flex items-center gap-1">+ Add</button>
-             </div>
-          );
-        case 'Bun':
-          return (
-             <div className="space-y-4">
-                {(incConfig.bundles?.items || []).map((item, index) => (
-                  <div key={index} className="flex gap-2">
-                    <input placeholder="Item" value={item.name} onChange={(e) => updateConfig('bundles', index, 'name', e.target.value)} className="flex-1 p-2 border rounded text-xs" />
-                    <input type="number" value={item.amount} onChange={(e) => updateConfig('bundles', index, 'amount', e.target.value)} className="w-1/3 p-2 border rounded text-xs" />
-                  </div>
-                ))}
-                <button onClick={() => addConfigItem('bundles')} className="text-xs bg-slate-100 dark:bg-slate-700 p-2 rounded flex items-center gap-1">+ Add</button>
-             </div>
-          );
-        case 'Acc':
-            return (
-                 <div className="space-y-4">
-                    <div className="flex justify-between text-xs font-bold text-slate-400 px-1">
-                        <span>Min Ach%</span>
-                        <span>Payout</span>
-                    </div>
-                    {(incConfig.accessories?.items || []).map((item, index) => (
-                      <div key={index} className="flex gap-2">
-                        <input placeholder="Min %" type="number" value={item.min} onChange={(e) => updateConfig('accessories', index, 'min', e.target.value)} className="w-1/2 p-2 border rounded text-xs" />
-                        <input placeholder="Payout" type="number" value={item.rate} onChange={(e) => updateConfig('accessories', index, 'rate', e.target.value)} className="w-1/2 p-2 border rounded text-xs" />
-                      </div>
-                    ))}
-                 </div>
-            );
-        default: return null;
-      }
-    };
-
-    return (
-        <div className="bg-white dark:bg-slate-800 p-4 rounded-xl shadow-lg mb-24 h-full flex flex-col">
-           <div className="flex justify-between items-center mb-4">
-             <div className="flex items-center gap-2">
-                <button onClick={() => setView('calc')} className="p-2 bg-slate-100 dark:bg-slate-700 rounded-full">
-                    <ChevronRight className="rotate-180" size={20} />
-                </button>
-                <h3 className="font-bold text-lg dark:text-white">Configuration</h3>
-             </div>
-             <div className="flex gap-2">
-                <button onClick={resetIncConfig} className="text-red-500 p-2"><RotateCcw size={16}/></button>
-                <button onClick={() => setView('calc')} className="text-indigo-500 p-2"><Save size={16}/></button>
-             </div>
-           </div>
-
-           <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700 mb-4 overflow-x-auto no-scrollbar shrink-0">
-             {['SP','TB','WR','CP','NPC','Bun','Acc','Misc'].map(t => (
-                 <button key={t} onClick={() => setActiveTab(t)} className={`px-4 py-2 font-bold text-sm whitespace-nowrap ${activeTab===t ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-400'}`}>{t}</button>
-             ))}
-           </div>
-
-           <div className="flex-1 overflow-y-auto pb-12">
-               {renderContent()}
-           </div>
-        </div>
-    );
-  };
-
-  if (view === 'config') return <ConfigSection />;
+  if (view === 'config') return <Config onBack={() => setView('calc')} />;
 
   return (
     <div className="fade-in space-y-4 pb-24 p-4">
@@ -835,7 +572,16 @@ const IncentiveContent = () => {
                          <option value="0">Select Slab</option>
                          {(incConfig.carePlus?.slabs || []).map((s, idx) => <option key={idx} value={s.amount}>{s.name} ({s.amount})</option>)}
                      </select>
-                     <input type="number" value={r.qty} onChange={(e)=>updRow('cp', i, 'qty', e.target.value)} className="w-14 text-center text-xs p-2 rounded border dark:bg-slate-900 dark:text-white" />
+                     <div className="flex flex-col items-center">
+                        <input type="number" value={r.qty} onChange={(e)=>updRow('cp', i, 'qty', e.target.value)} className="w-14 text-center text-xs p-2 rounded border dark:bg-slate-900 dark:text-white" />
+                     </div>
+                     <button
+                         onClick={() => updRow('cp', i, 'pm', !r.pm)}
+                         className={`p-2 rounded ${r.pm ? 'bg-indigo-100 text-indigo-600' : 'text-slate-300'}`}
+                         title="Protect Max (1.25x)"
+                     >
+                        <ShieldCheck size={16}/>
+                     </button>
                      <button onClick={() => delRow('cp', i)} className="text-red-400"><Trash2 size={14}/></button>
                  </div>
              ))}
@@ -849,8 +595,8 @@ const IncentiveContent = () => {
                          <span className="text-[10px] text-slate-400">Qty</span>
                      </div>
                      <select value={meta.t_ff7} onChange={(e)=>setMeta({...meta, t_ff7: e.target.value})} className="w-full text-[10px] p-1 rounded border">
-                         <option value="low">Low</option>
-                         <option value="high">High</option>
+                         <option value="low">Low (&lt;25%)</option>
+                         <option value="high">High (≥25%)</option>
                      </select>
                  </div>
                  <div className="bg-slate-50 dark:bg-slate-900 p-2 rounded">
@@ -860,8 +606,8 @@ const IncentiveContent = () => {
                          <span className="text-[10px] text-slate-400">Qty</span>
                      </div>
                      <select value={meta.t_s25} onChange={(e)=>setMeta({...meta, t_s25: e.target.value})} className="w-full text-[10px] p-1 rounded border">
-                         <option value="low">Low</option>
-                         <option value="high">High</option>
+                         <option value="low">Low (&lt;15%)</option>
+                         <option value="high">High (≥15%)</option>
                      </select>
                  </div>
              </div>
@@ -913,9 +659,19 @@ const IncentiveContent = () => {
                      <label className="text-xs text-slate-400">Total Accessory Sales (Value)</label>
                      <input type="number" value={meta.accVal} onChange={(e)=>setMeta({...meta, accVal: parseFloat(e.target.value)||0})} className="w-full p-2 border rounded text-sm font-bold dark:bg-slate-900 dark:text-white" />
                  </div>
+                 <div>
+                     <label className="text-xs text-slate-400">Base Target (Leave empty for Auto)</label>
+                     <input
+                        type="number"
+                        placeholder={`Auto: ${(result.spQ * 25).toFixed(0)}`}
+                        value={meta.accBaseOverride}
+                        onChange={(e)=>setMeta({...meta, accBaseOverride: e.target.value})}
+                        className="w-full p-2 border rounded text-sm font-bold dark:bg-slate-900 dark:text-white"
+                     />
+                 </div>
                  <div className="flex justify-between items-center text-xs text-slate-500 mt-1">
-                     <span>Base Target: {meta.accBase || ((rows.sp||[]).reduce((a,c)=>a+(c.qty* (c.fm?(incConfig.sp?.fm_mult||2):1)*25),0) || 0)}</span>
-                     <span className="text-emerald-600 font-bold">Payout: ₹{Math.floor(result.logs.find(l=>l.c==='Accessories')?.v || 0)}</span>
+                     <span>Payout</span>
+                     <span className="text-emerald-600 font-bold">₹{Math.floor(result.logs.find(l=>l.c==='Accessories')?.v || 0)}</span>
                  </div>
                  <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700">
                      <label className="text-xs text-slate-400">Misc. Incentive / Adjustment</label>

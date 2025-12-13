@@ -408,11 +408,11 @@ const Tracker = () => {
           </select>
           <div className="grid grid-cols-3 gap-3">
             <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="Model" className="col-span-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-700 dark:text-white font-bold text-sm border-none focus:ring-2 focus:ring-indigo-500" />
-            <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} className="p-3 rounded-xl bg-slate-50 dark:bg-slate-700 dark:text-white font-bold text-sm text-center border-none focus:ring-2 focus:ring-indigo-500" />
+            <input value={variant} onChange={(e) => setVariant(e.target.value)} placeholder="Variant" className="col-span-1 p-3 rounded-xl bg-slate-50 dark:bg-slate-700 dark:text-white font-bold text-sm border-none focus:ring-2 focus:ring-indigo-500" />
           </div>
           <div className="grid grid-cols-3 gap-3">
-            <input value={variant} onChange={(e) => setVariant(e.target.value)} placeholder="Variant (8/128)" className="col-span-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-700 dark:text-white font-bold text-sm border-none focus:ring-2 focus:ring-indigo-500" />
-            <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Price" className="col-span-1 p-3 rounded-xl bg-slate-50 dark:bg-slate-700 dark:text-white font-bold text-sm border-none focus:ring-2 focus:ring-indigo-500" />
+            <input type="number" value={qty} onChange={(e) => setQty(e.target.value)} className="col-span-1 p-3 rounded-xl bg-slate-50 dark:bg-slate-700 dark:text-white font-bold text-sm text-center border-none focus:ring-2 focus:ring-indigo-500" />
+            <input type="number" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="Price" className="col-span-2 p-3 rounded-xl bg-slate-50 dark:bg-slate-700 dark:text-white font-bold text-sm border-none focus:ring-2 focus:ring-indigo-500" />
           </div>
 
           <div className="flex gap-2">
