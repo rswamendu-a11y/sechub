@@ -1,7 +1,7 @@
 import React from 'react';
 import { type IncentiveConfig } from '../../types';
 import { Button, Input } from '../../components/ui';
-import { ArrowLeft, Save, Trash2, Plus } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Trash2 } from 'lucide-react';
 
 interface Props {
   config: IncentiveConfig;
@@ -13,6 +13,7 @@ export const IncentiveConfigGUI: React.FC<Props> = ({ config, onSave, onBack }) 
   const [cfg, setCfg] = React.useState<IncentiveConfig>(JSON.parse(JSON.stringify(config))); // Deep copy
   const [activeTab, setActiveTab] = React.useState('SP');
 
+  // Helper to deep set values
   const handleChange = (path: string, val: any) => {
     const keys = path.split('.');
     setCfg(prev => {
@@ -24,6 +25,7 @@ export const IncentiveConfigGUI: React.FC<Props> = ({ config, onSave, onBack }) 
     });
   };
 
+  // Helper to update array item field
   const handleArrChange = (path: string, index: number, field: string, val: any) => {
     const keys = path.split('.');
     setCfg(prev => {
@@ -35,7 +37,8 @@ export const IncentiveConfigGUI: React.FC<Props> = ({ config, onSave, onBack }) 
     });
   };
 
-  const addItem = (path: string, item: any) => {
+  // Helper to add item to array
+  const addArrItem = (path: string, item: any) => {
     const keys = path.split('.');
     setCfg(prev => {
         const next = JSON.parse(JSON.stringify(prev));
@@ -46,7 +49,8 @@ export const IncentiveConfigGUI: React.FC<Props> = ({ config, onSave, onBack }) 
     });
   };
 
-  const removeItem = (path: string, index: number) => {
+  // Helper to remove item from array
+  const removeArrItem = (path: string, index: number) => {
     const keys = path.split('.');
     setCfg(prev => {
         const next = JSON.parse(JSON.stringify(prev));
@@ -58,177 +62,141 @@ export const IncentiveConfigGUI: React.FC<Props> = ({ config, onSave, onBack }) 
   };
 
   const renderTab = () => {
-      if(activeTab === 'SP') {
-          return (
-              <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                      <h4 className="font-bold text-blue-600">Slabs (Smartphones)</h4>
-                      <button onClick={() => addItem('sp.slabs', {min:0, rate:0, label:''})} className="text-blue-600"><Plus size={16}/></button>
-                  </div>
-                  {cfg.sp.slabs.map((s, i) => (
-                      <div key={i} className="flex gap-2 items-center">
-                          <Input type="number" value={s.min} onChange={e => handleArrChange('sp.slabs', i, 'min', parseFloat(e.target.value))} placeholder="Min" />
-                          <Input type="number" value={s.rate} onChange={e => handleArrChange('sp.slabs', i, 'rate', parseFloat(e.target.value))} placeholder="Rate" />
-                          <Input value={s.label} onChange={e => handleArrChange('sp.slabs', i, 'label', e.target.value)} placeholder="Label" />
-                          <button onClick={() => removeItem('sp.slabs', i)} className="text-red-400"><Trash2 size={16}/></button>
-                      </div>
-                  ))}
-                  <h4 className="font-bold text-blue-600 mt-4">Gates (Std)</h4>
-                  {cfg.sp.gates.std.map((g, i) => (
-                      <div key={i} className="flex gap-2">
-                          <Input type="number" value={g.min} onChange={e => handleArrChange('sp.gates.std', i, 'min', parseFloat(e.target.value))} placeholder="Min %" />
-                          <Input type="number" value={g.p} onChange={e => handleArrChange('sp.gates.std', i, 'p', parseFloat(e.target.value))} placeholder="Mult" />
-                      </div>
-                  ))}
-              </div>
-          );
-      }
-      if(activeTab === 'TB') {
-          return (
-              <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                      <h4 className="font-bold text-green-600">Focus Models</h4>
-                      <button onClick={() => addItem('tb.focus', {name:'New', rate:0, keys:''})} className="text-green-600"><Plus size={16}/></button>
-                  </div>
-                  {cfg.tb.focus.map((f, i) => (
-                      <div key={i} className="flex gap-2 items-center">
-                          <Input value={f.name} onChange={e => handleArrChange('tb.focus', i, 'name', e.target.value)} placeholder="Name" />
-                          <Input type="number" value={f.rate} onChange={e => handleArrChange('tb.focus', i, 'rate', parseFloat(e.target.value))} placeholder="Rate" />
-                          <button onClick={() => removeItem('tb.focus', i)} className="text-red-400"><Trash2 size={16}/></button>
-                      </div>
-                  ))}
-                  <div className="flex justify-between items-center mt-4">
-                      <h4 className="font-bold text-green-600">Slabs</h4>
-                      <button onClick={() => addItem('tb.slabs', {min:0, rate:0, label:''})} className="text-green-600"><Plus size={16}/></button>
-                  </div>
-                   {cfg.tb.slabs.map((s, i) => (
-                      <div key={i} className="flex gap-2 items-center">
-                          <Input type="number" value={s.min} onChange={e => handleArrChange('tb.slabs', i, 'min', parseFloat(e.target.value))} placeholder="Min" />
-                          <Input type="number" value={s.rate} onChange={e => handleArrChange('tb.slabs', i, 'rate', parseFloat(e.target.value))} placeholder="Rate" />
-                          <button onClick={() => removeItem('tb.slabs', i)} className="text-red-400"><Trash2 size={16}/></button>
-                      </div>
-                  ))}
-              </div>
-          );
-      }
-      if(activeTab === 'WR') {
-           return (
-              <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                      <h4 className="font-bold text-purple-600">Wearables</h4>
-                      <button onClick={() => addItem('wr', {name:'New', rate:0, keys:''})} className="text-purple-600"><Plus size={16}/></button>
-                  </div>
-                  {cfg.wr.map((w, i) => (
-                      <div key={i} className="flex gap-2 items-center">
-                          <Input value={w.name} onChange={e => handleArrChange('wr', i, 'name', e.target.value)} placeholder="Name" />
-                          <Input type="number" value={w.rate} onChange={e => handleArrChange('wr', i, 'rate', parseFloat(e.target.value))} placeholder="Rate" />
-                          <button onClick={() => removeItem('wr', i)} className="text-red-400"><Trash2 size={16}/></button>
-                      </div>
-                  ))}
-              </div>
-          );
-      }
-      if(activeTab === 'CP') {
-           return (
-              <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                      <h4 className="font-bold text-red-600">Care+ Slabs</h4>
-                      <button onClick={() => addItem('cp.slabs', {min:0, rate:0, label:''})} className="text-red-600"><Plus size={16}/></button>
-                  </div>
-                  {cfg.cp.slabs.map((s, i) => (
-                      <div key={i} className="flex gap-2 items-center">
-                          <Input type="number" value={s.min} onChange={e => handleArrChange('cp.slabs', i, 'min', parseFloat(e.target.value))} placeholder="Min" />
-                          <Input type="number" value={s.rate} onChange={e => handleArrChange('cp.slabs', i, 'rate', parseFloat(e.target.value))} placeholder="Rate" />
-                          <button onClick={() => removeItem('cp.slabs', i)} className="text-red-400"><Trash2 size={16}/></button>
-                      </div>
-                  ))}
-
-                  <h4 className="font-bold text-red-600 mt-6">Kickers</h4>
-                  <div className="p-3 bg-red-50 dark:bg-slate-800 rounded-xl space-y-3 border border-red-100 dark:border-slate-700">
-                      <div>
-                          <label className="text-xs font-bold text-slate-500">FF7 Series</label>
-                          <div className="flex gap-2 mt-1">
-                              <Input type="number" value={cfg.cp.kickers.ff7.l} onChange={e => handleChange('cp.kickers.ff7.l', parseFloat(e.target.value))} placeholder="Low" />
-                              <Input type="number" value={cfg.cp.kickers.ff7.h} onChange={e => handleChange('cp.kickers.ff7.h', parseFloat(e.target.value))} placeholder="High" />
+      switch(activeTab) {
+          case 'SP':
+              return (
+                  <div className="space-y-4">
+                      <h4 className="font-bold text-blue-600">Slabs</h4>
+                      {cfg.sp.slabs.map((s, i) => (
+                          <div key={i} className="flex gap-2">
+                              <Input type="number" value={s.min} onChange={e => handleArrChange('sp.slabs', i, 'min', parseFloat(e.target.value))} placeholder="Min" />
+                              <Input type="number" value={s.rate} onChange={e => handleArrChange('sp.slabs', i, 'rate', parseFloat(e.target.value))} placeholder="Rate" />
                           </div>
-                      </div>
-                      <div>
-                          <label className="text-xs font-bold text-slate-500">S25 Series</label>
-                          <div className="flex gap-2 mt-1">
-                              <Input type="number" value={cfg.cp.kickers.s25.l} onChange={e => handleChange('cp.kickers.s25.l', parseFloat(e.target.value))} placeholder="Low" />
-                              <Input type="number" value={cfg.cp.kickers.s25.h} onChange={e => handleChange('cp.kickers.s25.h', parseFloat(e.target.value))} placeholder="High" />
+                      ))}
+                      <h4 className="font-bold text-blue-600 mt-4">Gates (Std)</h4>
+                      {cfg.sp.gates.std.map((g, i) => (
+                          <div key={i} className="flex gap-2">
+                              <Input type="number" value={g.min} onChange={e => handleArrChange('sp.gates.std', i, 'min', parseFloat(e.target.value))} placeholder="Min %" />
+                              <Input type="number" value={g.p} onChange={e => handleArrChange('sp.gates.std', i, 'p', parseFloat(e.target.value))} placeholder="Mult" />
                           </div>
-                      </div>
+                      ))}
                   </div>
-              </div>
-          );
-      }
-      if(activeTab === 'NPC') {
-           return (
-              <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                      <h4 className="font-bold text-indigo-600">Note PC</h4>
-                      <button onClick={() => addItem('npc', {name:'New', rate:0})} className="text-indigo-600"><Plus size={16}/></button>
-                  </div>
-                  {cfg.npc.map((n, i) => (
-                      <div key={i} className="flex gap-2 items-center">
-                          <Input value={n.name} onChange={e => handleArrChange('npc', i, 'name', e.target.value)} placeholder="Name" />
-                          <Input type="number" value={n.rate} onChange={e => handleArrChange('npc', i, 'rate', parseFloat(e.target.value))} placeholder="Rate" />
-                          <button onClick={() => removeItem('npc', i)} className="text-red-400"><Trash2 size={16}/></button>
+              );
+          case 'TB':
+              return (
+                  <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                          <h4 className="font-bold text-green-600">Focus Models</h4>
+                          <Button variant="secondary" className="p-1 h-auto" onClick={() => addArrItem('tb.focus', {name:'', rate:0, keys:''})}><Plus size={14}/></Button>
                       </div>
-                  ))}
-              </div>
-          );
-      }
-      if(activeTab === 'Bundles') {
-           return (
-              <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                      <h4 className="font-bold text-orange-600">Bundles (Standard)</h4>
-                      <button onClick={() => addItem('bun.std', {name:'New', rate:0})} className="text-orange-600"><Plus size={16}/></button>
+                      {cfg.tb.focus.map((f, i) => (
+                          <div key={i} className="flex gap-2 items-center">
+                              <Input value={f.name} onChange={e => handleArrChange('tb.focus', i, 'name', e.target.value)} placeholder="Name" />
+                              <Input type="number" value={f.rate} onChange={e => handleArrChange('tb.focus', i, 'rate', parseFloat(e.target.value))} placeholder="Rate" className="w-24" />
+                              <button onClick={() => removeArrItem('tb.focus', i)} className="text-red-400 p-1"><Trash2 size={16}/></button>
+                          </div>
+                      ))}
                   </div>
-                  {cfg.bun.std.map((b, i) => (
-                      <div key={i} className="flex gap-2 items-center">
-                          <Input value={b.name} onChange={e => handleArrChange('bun.std', i, 'name', e.target.value)} placeholder="Name" />
-                          <Input type="number" value={b.rate} onChange={e => handleArrChange('bun.std', i, 'rate', parseFloat(e.target.value))} placeholder="Rate" />
-                          <button onClick={() => removeItem('bun.std', i)} className="text-red-400"><Trash2 size={16}/></button>
+              );
+          case 'WR':
+              return (
+                  <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                          <h4 className="font-bold text-purple-600">Wearables</h4>
+                          <Button variant="secondary" className="p-1 h-auto" onClick={() => addArrItem('wr', {name:'', rate:0, keys:''})}><Plus size={14}/></Button>
                       </div>
-                  ))}
+                      {cfg.wr.map((w, i) => (
+                          <div key={i} className="flex gap-2 items-center">
+                              <Input value={w.name} onChange={e => handleArrChange('wr', i, 'name', e.target.value)} placeholder="Name" />
+                              <Input type="number" value={w.rate} onChange={e => handleArrChange('wr', i, 'rate', parseFloat(e.target.value))} placeholder="Rate" className="w-24" />
+                              <button onClick={() => removeArrItem('wr', i)} className="text-red-400 p-1"><Trash2 size={16}/></button>
+                          </div>
+                      ))}
+                  </div>
+              );
+          case 'CP':
+              return (
+                  <div className="space-y-4">
+                      <div className="flex justify-between items-center">
+                          <h4 className="font-bold text-red-600">Care+ Slabs</h4>
+                          <Button variant="secondary" className="p-1 h-auto" onClick={() => addArrItem('cp.slabs', {min:0, rate:0, label:''})}><Plus size={14}/></Button>
+                      </div>
+                      {cfg.cp.slabs.map((s, i) => (
+                          <div key={i} className="flex gap-2 items-center">
+                              <Input value={s.label} onChange={e => handleArrChange('cp.slabs', i, 'label', e.target.value)} placeholder="Label" />
+                              <Input type="number" value={s.min} onChange={e => handleArrChange('cp.slabs', i, 'min', parseFloat(e.target.value))} placeholder="Min" className="w-24" />
+                              <Input type="number" value={s.rate} onChange={e => handleArrChange('cp.slabs', i, 'rate', parseFloat(e.target.value))} placeholder="Rate" className="w-24" />
+                              <button onClick={() => removeArrItem('cp.slabs', i)} className="text-red-400 p-1"><Trash2 size={16}/></button>
+                          </div>
+                      ))}
+                  </div>
+              );
+          case 'NPC':
+              return (
+                  <div className="space-y-4">
+                       <div className="flex justify-between items-center">
+                          <h4 className="font-bold text-indigo-600">Note PC</h4>
+                          <Button variant="secondary" className="p-1 h-auto" onClick={() => addArrItem('npc', {name:'', rate:0})}><Plus size={14}/></Button>
+                      </div>
+                      {cfg.npc.map((n, i) => (
+                          <div key={i} className="flex gap-2 items-center">
+                              <Input value={n.name} onChange={e => handleArrChange('npc', i, 'name', e.target.value)} placeholder="Name" />
+                              <Input type="number" value={n.rate} onChange={e => handleArrChange('npc', i, 'rate', parseFloat(e.target.value))} placeholder="Rate" className="w-24" />
+                              <button onClick={() => removeArrItem('npc', i)} className="text-red-400 p-1"><Trash2 size={16}/></button>
+                          </div>
+                      ))}
+                  </div>
+              );
+          case 'Bundles':
+              return (
+                  <div className="space-y-4">
+                      {/* Standard Bundles */}
+                      <div className="flex justify-between items-center">
+                          <h4 className="font-bold text-orange-600">Standard Bundles</h4>
+                          <Button variant="secondary" className="p-1 h-auto" onClick={() => addArrItem('bun.std', {name:'', rate:0})}><Plus size={14}/></Button>
+                      </div>
+                      {cfg.bun.std.map((b, i) => (
+                          <div key={i} className="flex gap-2 items-center">
+                              <Input value={b.name} onChange={e => handleArrChange('bun.std', i, 'name', e.target.value)} placeholder="Name" />
+                              <Input type="number" value={b.rate} onChange={e => handleArrChange('bun.std', i, 'rate', parseFloat(e.target.value))} placeholder="Rate" className="w-24" />
+                              <button onClick={() => removeArrItem('bun.std', i)} className="text-red-400 p-1"><Trash2 size={16}/></button>
+                          </div>
+                      ))}
 
-                  <div className="flex justify-between items-center mt-6">
-                      <h4 className="font-bold text-orange-600">Bundles (Exclusive)</h4>
-                      <button onClick={() => addItem('bun.excl', {name:'New', rate:0})} className="text-orange-600"><Plus size={16}/></button>
-                  </div>
-                  {cfg.bun.excl.map((b, i) => (
-                      <div key={i} className="flex gap-2 items-center">
-                          <Input value={b.name} onChange={e => handleArrChange('bun.excl', i, 'name', e.target.value)} placeholder="Name" />
-                          <Input type="number" value={b.rate} onChange={e => handleArrChange('bun.excl', i, 'rate', parseFloat(e.target.value))} placeholder="Rate" />
-                          <button onClick={() => removeItem('bun.excl', i)} className="text-red-400"><Trash2 size={16}/></button>
+                      {/* Exclusive Bundles */}
+                      <div className="flex justify-between items-center mt-4">
+                          <h4 className="font-bold text-orange-600">Exclusive Bundles</h4>
+                          <Button variant="secondary" className="p-1 h-auto" onClick={() => addArrItem('bun.excl', {name:'', rate:0})}><Plus size={14}/></Button>
                       </div>
-                  ))}
-              </div>
-          );
-      }
-      if(activeTab === 'Acc') {
-           return (
-              <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                      <h4 className="font-bold text-pink-600">Accessories</h4>
-                      <button onClick={() => addItem('acc', {min:0, rate:0})} className="text-pink-600"><Plus size={16}/></button>
+                      {cfg.bun.excl.map((b, i) => (
+                          <div key={i} className="flex gap-2 items-center">
+                              <Input value={b.name} onChange={e => handleArrChange('bun.excl', i, 'name', e.target.value)} placeholder="Name" />
+                              <Input type="number" value={b.rate} onChange={e => handleArrChange('bun.excl', i, 'rate', parseFloat(e.target.value))} placeholder="Rate" className="w-24" />
+                              <button onClick={() => removeArrItem('bun.excl', i)} className="text-red-400 p-1"><Trash2 size={16}/></button>
+                          </div>
+                      ))}
                   </div>
-                  <div className="text-xs text-slate-400 mb-2">Define achievement brackets (Min %) and their fixed incentive (Rate).</div>
-                  {cfg.acc.map((a, i) => (
-                      <div key={i} className="flex gap-2 items-center">
-                          <Input type="number" value={a.min} onChange={e => handleArrChange('acc', i, 'min', parseFloat(e.target.value))} placeholder="Min %" />
-                          <Input type="number" value={a.rate} onChange={e => handleArrChange('acc', i, 'rate', parseFloat(e.target.value))} placeholder="Rate" />
-                          <button onClick={() => removeItem('acc', i)} className="text-red-400"><Trash2 size={16}/></button>
+              );
+           case 'Acc':
+               return (
+                   <div className="space-y-4">
+                       <div className="flex justify-between items-center">
+                          <h4 className="font-bold text-teal-600">Accessories Slabs</h4>
+                          <Button variant="secondary" className="p-1 h-auto" onClick={() => addArrItem('acc', {min:0, rate:0})}><Plus size={14}/></Button>
                       </div>
-                  ))}
-              </div>
-          );
+                       <p className="text-xs text-slate-500 mb-2">Define payout per Achievement % of base.</p>
+                       {cfg.acc.map((a, i) => (
+                           <div key={i} className="flex gap-2 items-center">
+                               <Input type="number" value={a.min} onChange={e => handleArrChange('acc', i, 'min', parseFloat(e.target.value))} placeholder="Min %" />
+                               <Input type="number" value={a.rate} onChange={e => handleArrChange('acc', i, 'rate', parseFloat(e.target.value))} placeholder="Incentive" />
+                               <button onClick={() => removeArrItem('acc', i)} className="text-red-400 p-1"><Trash2 size={16}/></button>
+                           </div>
+                       ))}
+                   </div>
+               );
+          default:
+              return <div>Select a category above to edit rates.</div>;
       }
-
-      return <div>Select a category above to edit rates.</div>;
   };
 
   return (

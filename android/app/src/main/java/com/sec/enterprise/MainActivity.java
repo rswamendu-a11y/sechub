@@ -1,4 +1,4 @@
-package com.shubapp;
+package com.sec.enterprise;
 
 import com.getcapacitor.BridgeActivity;
 

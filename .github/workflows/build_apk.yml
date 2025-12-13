@@ -6,7 +6,6 @@ on:
       - main
       - master
       - 'refactor-*'
-      - 'jules-*'
   pull_request:
     branches:
       - main
@@ -24,7 +23,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
-          java-version: '17' # Reverting to 17 as per memory "CI/CD workflow is configured to use Java 17"
+          java-version: '21'
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -40,9 +39,6 @@ jobs:
 
       - name: Sync Capacitor
         run: npx cap sync android
-
-      - name: Grant Execute Permission for Gradlew
-        run: chmod +x android/gradlew
 
       - name: Build Android APK
         run: cd android && ./gradlew assembleDebug

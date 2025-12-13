@@ -32,22 +32,22 @@ export const calculateIncentive = (
     }
   }
 
-  // --- FIX: REMOVED < 80% TARGET GATE (Task 2) ---
-  // We keep the Volume Gate Multiplier (gateM) but do not zero out if target missed.
-  // Original logic checked (ach < target_thresh) -> spFin = 0. We deleted that.
-
   let spFin = spRaw * gateM;
-  let spPot = spRaw * (gateM > 0 ? gateM : 1.0);
+  let spPot = spRaw * (gateM > 0 ? gateM : 1.0); // Potential if gate hit
 
-  // We still track 'missed' for UI indication, but it doesn't kill the payout
+  // Target Achievement Check
   const ach = m.target > 0 ? spQ / m.target : 0;
   let missed = false;
+
+  // REMOVED 80% GATE CHECK AS REQUESTED
+  // Previously: if(!isExempt && m.channel === 'standard' && ach < c.sp.target_thresh) { spFin = 0; ... }
+
   if(!isExempt && m.channel === 'standard' && ach < c.sp.target_thresh) {
-      missed = true;
-      // gateN = `Missed Target (${spQ}/${m.target})`; // Optional: Keep note, but pay is valid
-      // spFin = 0; // <--- DELETED THIS LINE
+    missed = true; // Still flag it visually, but allow payout
+    gateN = `Low Achievement (${spQ}/${m.target})`;
   }
 
+  // Volume Gate (e.g. Min 25 units) still applies if configured in gateSet, but spFin is calculated by gateM
   if(gateM === 0) {
     missed = true;
     gateN = `Missed Volume Gate (${spQ})`;
@@ -66,11 +66,13 @@ export const calculateIncentive = (
   rows.wr.forEach(r => wrTot += (r.qty||0) * r.rate);
   logs.push({ c: "Wearables", n: "", v: wrTot });
 
-  // --- GLOBAL CAP CHECK ---
+  // --- GLOBAL CAP CHECK (SP + WR only?) ---
+  // Original code: let comb = spFin + wrTot; if(comb > c.caps.global) ...
   let comb = spFin + wrTot;
   if (comb > c.caps.global) {
     comb = c.caps.global;
-    logs.push({ c: "Global Cap", n: "Max 75k applied", v: 0 });
+    logs.push({ c: "Global Cap", n: "Max 75k applied", v: 0 }); // Just a note, the value is adjusted in grand total implicitly or we adjust comb
+    // Actually simpler to just use 'comb' in total sum instead of spFin+wrTot
   }
 
   // --- CARE+ ---
@@ -83,6 +85,7 @@ export const calculateIncentive = (
     cpTot = 0;
     logs.push({ c: "Care+", n: "Gate < 3", v: 0 });
   } else {
+    // Kickers
     if (m.k_ff7 > 0) cpTot += m.k_ff7 * (m.t_ff7 === 'high' ? c.cp.kickers.ff7.h : c.cp.kickers.ff7.l);
     if (m.k_s25 > 0) cpTot += m.k_s25 * (m.t_s25 === 'high' ? c.cp.kickers.s25.h : c.cp.kickers.s25.l);
     logs.push({ c: "Care+", n: "", v: cpTot });
@@ -94,9 +97,19 @@ export const calculateIncentive = (
   let npcFin = Math.min(npcTot, c.caps.npc);
   logs.push({ c: "Note PC", n: npcTot > npcFin ? "Capped" : "", v: npcFin });
 
+  // --- BUNDLES (This requires DOM in original, here passed as args?) ---
+  // We'll need to pass bundle rows or just assume they are calculated outside?
+  // Let's assume the component manages bundle inputs separately or we add them to 'rows'
+  // For now, let's assume 'bun' is not in 'rows' structure passed, so we return 0 or refactor.
+  // Ideally, Bundle inputs should be part of state.
+  // Refactor: Let's assume the caller passes a calculated bundle total or we add bun to rows.
+  // Let's skip for now or add a placeholder.
+  let bunTot = 0; // Configured in component state
+  // logs.push({ c: "Bundles", n: "", v: bunTot });
+
   // --- ACCESSORIES ---
   let accTot = 0;
-  const ab = m.accBase || (spRaw * 25);
+  const ab = m.accBase || (spRaw * 25); // Default base estimation
   if (ab > 0 && m.channel !== 'exclusive') {
     const pct = (m.accVal / ab) * 100;
     for (let t of c.acc) {
@@ -107,6 +120,10 @@ export const calculateIncentive = (
     }
   }
   logs.push({ c: "Accessories", n: "", v: accTot });
+
+  // --- GRAND TOTAL ---
+  // Grand = comb (SP+WR capped) + TB (capped) + NPC (capped) + CP + BUN + ACC
+  // We need to return the pieces so the UI can sum them with external Bundle input
 
   return {
     logs,

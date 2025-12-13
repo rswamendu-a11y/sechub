@@ -1,12 +1,9 @@
-import { CapacitorConfig } from '@capacitor/cli';
+import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
-  appId: 'com.shubapp',
-  appName: 'Shubtrckr',
-  webDir: 'dist',
-  server: {
-    androidScheme: 'https'
-  }
+  appId: 'com.sec.enterprise',
+  appName: 'SEC Enterprise Hub',
+  webDir: 'dist'
 };
 
 export default config;

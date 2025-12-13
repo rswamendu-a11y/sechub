@@ -10,10 +10,10 @@ import 'jspdf-autotable';
 import { FilesystemService } from '../../services/filesystem';
 
 // Initial Row State Helper
-const initRow = (rate=0, qty=1) => ({ qty, rate, fm: false });
+const initRow = (rate=0) => ({ qty: 1, rate, fm: false });
 
 export const IncentiveView: React.FC = () => {
-  const { incConfig, updateIncentiveConfig, sales } = useAppStore();
+  const { incConfig, updateIncentiveConfig } = useAppStore();
   const [showConfig, setShowConfig] = useState(false);
 
   // Local State for Calculation
@@ -29,84 +29,17 @@ export const IncentiveView: React.FC = () => {
 
   const [bundles, setBundles] = useState<Record<string, number>>({});
 
-  // --- AUTO-INCENTIVE BRIDGE ---
-  // On mount (or when sales change?), if rows are empty, populate from Sales Log
+  // Populate initial rows if empty
   useEffect(() => {
-    if(rows.sp.length > 0) return; // Don't overwrite if already has data (or user edited)
-
-    const dateStr = new Date().toISOString().slice(0, 7); // YYYY-MM
-    const spMap = new Map<number, number>(); // Rate -> Qty
-    const tbMap = new Map<number, number>();
-
-    Object.entries(sales).forEach(([date, dayData]: [string, any]) => {
-        if(!date.startsWith(dateStr)) return;
-
-        // We must parse the Logs to get individual unit prices
-        // Log Format: ... Samsung Model (Var) - Xu (Val: Y) ...
-        // Regex to capture Brand, Qty, Val
-        // But the log format in TrackerEntry is: `[Date Time] Brand Model (Variant) - Qu (Val: Total)`
-        // Example: `[2023-10-27 ...] Samsung S23 - 1u (Val: 75000)`
-
-        const logs = dayData.models || "";
-        const lines = logs.split('\n');
-        lines.forEach((line: string) => {
-            if(!line.includes('Samsung')) return;
-
-            // Extract Qty and Val
-            const match = line.match(/-\s(\d+)u\s\(Val:\s(\d+)\)/);
-            if(match) {
-                const qty = parseInt(match[1]);
-                const val = parseInt(match[2]);
-                if(qty > 0 && val > 0) {
-                    const unitPrice = val / qty;
-
-                    // Determine if Tablet or SP based on Model name?
-                    // Tracker doesn't explicitly save 'Type'.
-                    // HEURISTIC: Check if Model name contains 'Tab'.
-                    // If strict type is needed, we'd need Tracker update.
-                    // For now, assume everything is SP unless it says 'Tab'.
-                    const isTab = line.toLowerCase().includes('tab');
-
-                    const targetMap = isTab ? tbMap : spMap;
-                    const slabs = isTab ? incConfig.tb.slabs : incConfig.sp.slabs;
-
-                    // Find Slab
-                    // Slabs are sorted desc usually? min 100000, min 70000...
-                    // Find first slab where unitPrice >= min
-                    const slab = slabs.find(s => unitPrice >= s.min);
-                    const rate = slab ? slab.rate : 0;
-
-                    if(rate > 0) {
-                        targetMap.set(rate, (targetMap.get(rate)||0) + qty);
-                    }
-                }
-            }
-        });
-    });
-
-    const newSP = Array.from(spMap.entries()).map(([rate, qty]) => initRow(rate, qty));
-    const newTB = Array.from(tbMap.entries()).map(([rate, qty]) => initRow(rate, qty));
-
-    if(newSP.length > 0 || newTB.length > 0) {
+    if(rows.sp.length === 0) {
         setRows(prev => ({
-            ...prev,
-            sp: newSP.length ? newSP : [initRow()],
-            tb: newTB.length ? newTB : [initRow()],
-            wr: prev.wr.length ? prev.wr : [initRow()] // Preserve or init
-        }));
-    } else {
-        // Init empty if nothing found
-         setRows(prev => ({
             ...prev,
             sp: [initRow()],
             tb: [initRow()],
             wr: [initRow()]
         }));
     }
-
-  }, [sales, incConfig]); // Re-run if sales update? Maybe just on mount is safer to avoid overwriting edits.
-  // But usually users want real-time. Let's stick to "If empty".
-  // If user clears rows, it might re-pop. That's acceptable.
+  }, []);
 
   // Calculation
   const result = calculateIncentive(incConfig, rows, meta);
@@ -281,18 +214,15 @@ export const IncentiveView: React.FC = () => {
        </div>
 
        {/* Footer */}
-       <div className="fixed bottom-20 left-0 w-full glass p-3 border-t border-slate-200 dark:border-slate-800 flex flex-col items-center z-40 max-w-xl mx-auto shadow-lg">
-            <div className="flex justify-between items-center w-full mb-2">
-                <div className="text-right flex-1 pr-4">
-                    <div className="text-[10px] font-bold text-slate-400 uppercase">Total Payout</div>
-                    <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">₹{Math.floor(grandTotal).toLocaleString()}</div>
-                </div>
-                <div className="flex gap-2">
-                    <Button variant="secondary" onClick={() => handleExport('xlsx')} className="p-3 rounded-xl"><FileSpreadsheet size={20} /></Button>
-                    <Button variant="danger" onClick={() => handleExport('pdf')} className="p-3 rounded-xl"><FileText size={20} /></Button>
-                </div>
+       <div className="fixed bottom-16 left-0 w-full glass p-3 border-t border-slate-200 dark:border-slate-800 flex justify-between items-center z-40 max-w-xl mx-auto pb-safe">
+            <div className="text-right flex-1 pr-4">
+                <div className="text-[10px] font-bold text-slate-400 uppercase">Total Payout</div>
+                <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">₹{Math.floor(grandTotal).toLocaleString()}</div>
             </div>
-            <div className="text-[10px] font-extrabold text-slate-800 dark:text-slate-300 text-center uppercase tracking-wide w-full border-t border-slate-100 dark:border-slate-700 pt-2">THIS INCENTIVE WORKING IS SUBJECT TO QUALIFICATION CRITERIA</div>
+            <div className="flex gap-2">
+                <Button variant="secondary" onClick={() => handleExport('xlsx')} className="p-3 rounded-xl"><FileSpreadsheet size={20} /></Button>
+                <Button variant="danger" onClick={() => handleExport('pdf')} className="p-3 rounded-xl"><FileText size={20} /></Button>
+            </div>
        </div>
     </div>
   );
