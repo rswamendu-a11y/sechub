@@ -112,15 +112,38 @@ const IncentiveContent = () => {
       calculateAutoIncentives();
   }, [sales]);
 
-  const getPerUnitIncentive = (price) => {
-      if (price >= 100000) return 700;
-      if (price >= 70000) return 600;
-      if (price >= 40000) return 500;
-      if (price >= 30000) return 300;
-      if (price >= 20000) return 200;
-      if (price >= 15000) return 100;
-      if (price >= 10000) return 75;
-      return 25; // < 10k
+  const getPerUnitIncentive = (price, type = 'sp') => {
+      const slabs = type === 'tb' ? (incConfig.tb?.slabs || []) : (incConfig.sp?.slabs || []);
+
+      // If no slabs configured, use defaults or 0
+      if (!slabs || slabs.length === 0) {
+          // Fallback defaults if empty (only for SP to avoid breaking if config is missing)
+          if (type === 'sp') {
+            if (price >= 100000) return 700;
+            if (price >= 70000) return 600;
+            if (price >= 40000) return 500;
+            if (price >= 30000) return 300;
+            if (price >= 20000) return 200;
+            if (price >= 15000) return 100;
+            if (price >= 10000) return 75;
+            return 25;
+          }
+          return 0;
+      }
+
+      // Find matching slab
+      // Slabs are expected to have min, max, rate.
+      // We assume slabs cover ranges. If max is 0 or missing, it might mean "and above" or just bad config.
+      // Let's assume standard "min <= price < max" logic, or just "price >= min" if sorted.
+      // Best approach: Sort slabs by min desc, find first one where price >= min.
+
+      const sortedSlabs = [...slabs].sort((a, b) => b.min - a.min);
+      for (let s of sortedSlabs) {
+          if (price >= s.min) {
+              return s.rate;
+          }
+      }
+      return 0;
   };
 
   const calculateAutoIncentives = () => {
@@ -148,9 +171,9 @@ const IncentiveContent = () => {
                              const isTablet = (e.model || '').toLowerCase().includes('tab');
 
                              if (isTablet) {
-                                 addToRows(tbRows, getPerUnitIncentive(price));
+                                 addToRows(tbRows, getPerUnitIncentive(price, 'tb'));
                              } else {
-                                 addToRows(spRows, getPerUnitIncentive(price));
+                                 addToRows(spRows, getPerUnitIncentive(price, 'sp'));
                              }
                          }
                      });
@@ -508,7 +531,7 @@ const IncentiveContent = () => {
                  <div key={i} className="flex gap-2 mb-2 items-center">
                      <select value={r.rate} onChange={(e)=>updRow('sp', i, 'rate', e.target.value)} className="flex-1 text-xs p-2 rounded border dark:bg-slate-900 dark:text-white">
                          <option value="0">Select Slab</option>
-                         {(incConfig.sp?.slabs || []).map((s, idx) => <option key={idx} value={s.rate}>{s.label} ({s.rate})</option>)}
+                         {(incConfig.sp?.slabs || []).map((s, idx) => <option key={idx} value={s.rate}>₹{s.min/1000}k - ₹{s.max/1000}k ({s.rate})</option>)}
                      </select>
                      <input type="number" value={r.qty} onChange={(e)=>updRow('sp', i, 'qty', e.target.value)} className="w-14 text-center text-xs p-2 rounded border dark:bg-slate-900 dark:text-white" />
                      <button onClick={() => delRow('sp', i)} className="text-red-400"><Trash2 size={14}/></button>
@@ -525,9 +548,8 @@ const IncentiveContent = () => {
              {(rows.tb || []).map((r, i) => (
                  <div key={i} className="flex gap-2 mb-2 items-center">
                      <select value={r.rate} onChange={(e)=>updRow('tb', i, 'rate', e.target.value)} className="flex-1 text-xs p-2 rounded border dark:bg-slate-900 dark:text-white">
-                         <option value="0">Select Model</option>
-                         {(incConfig.tb?.slabs || []).map((s, idx) => <option key={'s'+idx} value={s.rate}>{s.label} ({s.rate})</option>)}
-                         {(incConfig.tb?.focus || []).map((f, idx) => <option key={'f'+idx} value={f.rate}>{f.name} ({f.rate})</option>)}
+                         <option value="0">Select Slab</option>
+                         {(incConfig.tb?.slabs || []).map((s, idx) => <option key={'s'+idx} value={s.rate}>₹{s.min/1000}k - ₹{s.max/1000}k ({s.rate})</option>)}
                      </select>
                      <input type="number" value={r.qty} onChange={(e)=>updRow('tb', i, 'qty', e.target.value)} className="w-14 text-center text-xs p-2 rounded border dark:bg-slate-900 dark:text-white" />
                      <button onClick={() => delRow('tb', i)} className="text-red-400"><Trash2 size={14}/></button>

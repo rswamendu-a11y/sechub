@@ -114,9 +114,10 @@ const Config = ({ onBack }) => {
 
       {/* Tabs */}
       <div className="flex overflow-x-auto no-scrollbar border-b border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-900">
+         <TabButton id="SP" label="Phones" />
+         <TabButton id="TB" label="Tablets" />
          <TabButton id="CP" label="Care+" />
          <TabButton id="WR" label="Wearables" />
-         <TabButton id="TB" label="Tablets" />
          <TabButton id="NPC" label="Note PC" />
          <TabButton id="BUN" label="Bundles" />
          <TabButton id="ACC" label="Accessories" />
@@ -124,6 +125,39 @@ const Config = ({ onBack }) => {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-24">
+
+        {/* SMARTPHONES */}
+        {activeTab === 'SP' && (
+             <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl fade-in">
+                <h3 className="text-sm font-bold text-slate-500 uppercase mb-3">Smartphone Incentive Scheme</h3>
+                <div className="grid grid-cols-12 gap-2 mb-2 text-xs font-bold text-slate-400 uppercase">
+                    <div className="col-span-4">Min Price</div>
+                    <div className="col-span-4">Max Price</div>
+                    <div className="col-span-3">Incentive</div>
+                    <div className="col-span-1"></div>
+                </div>
+                <div className="space-y-2">
+                    {(localConfig.sp?.slabs || []).map((item, i) => (
+                        <div key={i} className="flex gap-2 items-center">
+                            <input type="number" value={item.min} onChange={(e)=>updateArrayItem('sp.slabs', i, 'min', e.target.value)} className="w-full p-2 rounded border text-sm" placeholder="Min" />
+                            <input type="number" value={item.max} onChange={(e)=>updateArrayItem('sp.slabs', i, 'max', e.target.value)} className="w-full p-2 rounded border text-sm" placeholder="Max" />
+                            <input type="number" value={item.rate} onChange={(e)=>updateArrayItem('sp.slabs', i, 'rate', e.target.value)} className="w-full p-2 rounded border text-sm" placeholder="Amt" />
+                            <button onClick={()=>removeArrayItem('sp.slabs', i)} className="text-red-400 p-2"><Trash2 size={16}/></button>
+                        </div>
+                    ))}
+                    <button onClick={()=>addArrayItem('sp.slabs', {min:0, max:0, rate:0})} className="w-full py-2 bg-white dark:bg-slate-600 border border-dashed border-slate-300 rounded-lg text-xs font-bold text-slate-500 flex justify-center gap-2">
+                        <Plus size={14}/> Add Slab
+                    </button>
+                </div>
+                <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 rounded-lg text-xs">
+                    <p className="font-bold mb-1">Note:</p>
+                    <ul className="list-disc pl-4 space-y-1">
+                        <li>F & M Series (except F17/F56/M56) get 50% of slab value.</li>
+                        <li>F17, F56 & M56 get 100% of slab value.</li>
+                    </ul>
+                </div>
+             </div>
+        )}
 
         {/* CARE PLUS */}
         {activeTab === 'CP' && (
@@ -216,14 +250,25 @@ const Config = ({ onBack }) => {
         {/* TABLETS */}
         {activeTab === 'TB' && (
              <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl fade-in">
-                <h3 className="text-sm font-bold text-slate-500 uppercase mb-3">Tablet Slabs</h3>
+                <h3 className="text-sm font-bold text-slate-500 uppercase mb-3">Tablet Incentive Scheme</h3>
+                <div className="grid grid-cols-12 gap-2 mb-2 text-xs font-bold text-slate-400 uppercase">
+                    <div className="col-span-4">Min Price</div>
+                    <div className="col-span-4">Max Price</div>
+                    <div className="col-span-3">Incentive</div>
+                    <div className="col-span-1"></div>
+                </div>
                 <div className="space-y-2">
                     {(localConfig.tb?.slabs || []).map((item, i) => (
                         <div key={i} className="flex gap-2 items-center">
-                            <input value={item.label} onChange={(e)=>updateArrayItem('tb.slabs', i, 'label', e.target.value)} className="flex-1 p-2 rounded border text-sm" placeholder="Slab Name" />
-                            <input type="number" value={item.rate} onChange={(e)=>updateArrayItem('tb.slabs', i, 'rate', e.target.value)} className="w-24 p-2 rounded border text-sm" placeholder="Rate" />
+                            <input type="number" value={item.min} onChange={(e)=>updateArrayItem('tb.slabs', i, 'min', e.target.value)} className="w-full p-2 rounded border text-sm" placeholder="Min" />
+                            <input type="number" value={item.max} onChange={(e)=>updateArrayItem('tb.slabs', i, 'max', e.target.value)} className="w-full p-2 rounded border text-sm" placeholder="Max" />
+                            <input type="number" value={item.rate} onChange={(e)=>updateArrayItem('tb.slabs', i, 'rate', e.target.value)} className="w-full p-2 rounded border text-sm" placeholder="Amt" />
+                            <button onClick={()=>removeArrayItem('tb.slabs', i)} className="text-red-400 p-2"><Trash2 size={16}/></button>
                         </div>
                     ))}
+                    <button onClick={()=>addArrayItem('tb.slabs', {min:0, max:0, rate:0})} className="w-full py-2 bg-white dark:bg-slate-600 border border-dashed border-slate-300 rounded-lg text-xs font-bold text-slate-500 flex justify-center gap-2">
+                        <Plus size={14}/> Add Slab
+                    </button>
                 </div>
              </div>
         )}

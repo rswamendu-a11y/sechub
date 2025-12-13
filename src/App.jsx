@@ -5,8 +5,6 @@ import Tracker from './pages/Tracker';
 import Analytics from './pages/Analytics';
 import Incentive from './pages/Incentive';
 import Settings from './pages/Settings';
-import DocsLocker from './pages/DocsLocker';
-import GeminiChat from './components/GeminiChat';
 
 const App = () => {
   const { theme, setTheme, pin, profile } = useAppStore();
@@ -92,12 +90,8 @@ const App = () => {
             {view === 'tracker' && <Tracker />}
             {view === 'analytics' && <Analytics />}
             {view === 'incentive' && <Incentive />}
-            {view === 'locker' && <DocsLocker />}
             {view === 'settings' && <Settings />}
         </main>
-
-        {/* Gemini Chat Overlay */}
-        <GeminiChat />
 
         {/* Bottom Nav */}
         <nav className="fixed bottom-0 w-full max-w-xl glass border-t border-slate-200 dark:border-slate-800 z-50 pb-safe">
@@ -105,7 +99,6 @@ const App = () => {
                 <NavBtn target="tracker" icon={BarChart2} label="Tracker" />
                 <NavBtn target="analytics" icon={(props)=><BarChart2 {...props} className="rotate-90"/>} label="Analytics" />
                 <NavBtn target="incentive" icon={Calculator} label="Incentive" />
-                <NavBtn target="locker" icon={Folder} label="Locker" />
                 <NavBtn target="settings" icon={User} label="Profile" />
             </div>
         </nav>
