@@ -1,18 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
-import { Download, Trash2, User, Lock, Upload, Save } from 'lucide-react';
+import { Download, Trash2, User, Lock, Upload, Save, FileSpreadsheet } from 'lucide-react';
 import { Filesystem, Directory, Encoding } from '@capacitor/filesystem';
 import { Share } from '@capacitor/share';
+import * as XLSX from 'xlsx';
 
 const Settings = () => {
   const { profile, setProfile, pin, setPin, sales, wipeData, importData, incConfig } = useAppStore();
 
-  // Local state for profile form to prevent auto-save
   const [localName, setLocalName] = useState('');
   const [localOutlet, setLocalOutlet] = useState('');
   const [localPin, setLocalPin] = useState('');
 
-  // Sync on mount
   useEffect(() => {
       setLocalName(profile.name || '');
       setLocalOutlet(profile.outlet || '');
@@ -26,7 +25,6 @@ const Settings = () => {
   };
 
   const handleBackup = async () => {
-    // Export Sales, Profile, Config (No binaries)
     const backup = {
         sales: sales,
         profile: profile,
@@ -39,7 +37,6 @@ const Settings = () => {
     const jsonStr = JSON.stringify(backup, null, 2);
 
     try {
-        // Write to Cache
         await Filesystem.writeFile({
             path: fileName,
             data: jsonStr,
@@ -47,34 +44,78 @@ const Settings = () => {
             encoding: Encoding.UTF8
         });
 
-        // Get URI
         const uriResult = await Filesystem.getUri({
              path: fileName,
              directory: Directory.Cache
         });
 
-        // Share
         await Share.share({
             title: 'Backup Data',
-            text: 'Here is your SEC Unified Backup',
             url: uriResult.uri,
             dialogTitle: 'Save Backup'
         });
 
     } catch (e) {
         console.error(e);
-        // Fallback to old method if share fails (e.g. browser env)
-        try {
-            const blob = new Blob([jsonStr], {type: 'application/json'});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = fileName;
-            a.click();
-        } catch(err) {
-            alert("Export Failed: " + e.message);
-        }
+        alert("Export Failed: " + e.message);
     }
+  };
+
+  const handleExcelExport = async () => {
+      try {
+          // Flatten Data
+          const rows = [];
+          Object.keys(sales).forEach(date => {
+              const day = sales[date];
+              if (day.entries) {
+                  day.entries.forEach(e => {
+                      rows.push({
+                          Date: date,
+                          Time: new Date(e.timestamp).toLocaleTimeString(),
+                          Brand: e.brand,
+                          Model: e.model,
+                          Variant: e.variant || '',
+                          Qty: e.qty,
+                          Value: e.total
+                      });
+                  });
+              }
+          });
+
+          if (rows.length === 0) {
+              alert("No data to export.");
+              return;
+          }
+
+          const ws = XLSX.utils.json_to_sheet(rows);
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, "Sales Data");
+
+          // Generate Base64
+          const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+          const fileName = `Sales_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+          await Filesystem.writeFile({
+              path: fileName,
+              data: wbout,
+              directory: Directory.Cache
+          });
+
+          const uriResult = await Filesystem.getUri({
+              path: fileName,
+              directory: Directory.Cache
+          });
+
+          await Share.share({
+              title: 'Sales Export',
+              url: uriResult.uri,
+              dialogTitle: 'Save Excel'
+          });
+
+      } catch (e) {
+          console.error(e);
+          alert("Excel Export Failed: " + e.message);
+      }
   };
 
   const handleRestore = (e) => {
@@ -93,7 +134,7 @@ const Settings = () => {
               importData(data, replace ? 'replace' : 'merge');
               alert("Data Restored Successfully!");
 
-              // Force reload state from store
+              // Force reload state
               const updatedProfile = useAppStore.getState().profile;
               const updatedPin = useAppStore.getState().pin;
               setLocalName(updatedProfile.name);
@@ -112,7 +153,6 @@ const Settings = () => {
     if(confirm("CRITICAL WARNING: This will factory reset the app. All data will be lost. Continue?")) {
         if(confirm("Are you absolutely sure?")) {
             wipeData();
-            // Reset locals
             setLocalName('');
             setLocalOutlet('');
             setLocalPin('1234');
@@ -162,6 +202,14 @@ const Settings = () => {
                  <div className="text-left">
                      <div className="font-bold">Master Backup</div>
                      <div className="text-xs text-slate-400">Export JSON</div>
+                 </div>
+             </button>
+
+             <button onClick={handleExcelExport} className="w-full bg-white/10 hover:bg-white/20 p-4 rounded-xl flex items-center gap-3 mb-3 transition">
+                 <FileSpreadsheet size={20} className="text-green-400"/>
+                 <div className="text-left">
+                     <div className="font-bold">Export Excel</div>
+                     <div className="text-xs text-slate-400">Download .xlsx</div>
                  </div>
              </button>
 
