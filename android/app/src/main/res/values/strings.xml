@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">SEC Enterprise Hub</string>
+    <string name="title_activity_main">SEC Enterprise Hub</string>
+    <string name="package_name">com.sec.enterprise</string>
+    <string name="custom_url_scheme">com.sec.enterprise</string>
+</resources>
