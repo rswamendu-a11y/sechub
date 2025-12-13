@@ -270,15 +270,28 @@ const IncentiveContent = () => {
           let gateN = "Missed Volume Gate";
           for(let g of gateSet) { if(g && spQ >= g.min) { gateM = g.p; gateN = ""; break; } }
 
-          let spFin = spRaw * gateM;
-          let spPot = spRaw * (gateM > 0 ? gateM : 1.0);
+          // SURGERY: BYPASS GATE LOGIC FOR PAYOUT
+          // The user wants 'spFin' to be the potential/raw earning even if gate is missed.
+          // We keep 'gateM' calculation only for the Log/Display message but force payout.
+          let spFin = spRaw; // Bypassed Multiplier: was spRaw * gateM
+
+          let spPot = spRaw;
           const ach = meta.target > 0 ? spQ/meta.target : 0;
 
           let missed = false;
           if(gateM === 0) {
-              missed=true; gateN=`Missed Volume Gate (${spQ})`;
+              // We still Log it as missed for visual info, but value is spFin (Money Unlocked)
+              missed=true; gateN=`Missed Volume Gate (${spQ}) - (Ignored)`;
+          } else {
+             // If gate hit, apply multiplier if needed?
+             // User said "DISABLE MATH GATE... Return raw sum".
+             // If gate multiplier > 1 (rare), we might miss it, but standard gates are <= 1 usually or exactly 1.
+             // Actually, usually gates are 0.6, 0.75, 1.0.
+             // If the user wants "Raw Sum" -> "Sell 1 phone, see money", they want NO multiplier penalty.
+             // So spFin = spRaw is correct.
           }
 
+          // Ensure logs reflect the "Ignored" status visually
           logs.push({c:"Smartphones", n:gateN, v:spFin, pot:spPot, missed});
 
           // --- Tablets ---
