@@ -50,7 +50,7 @@ const IncentiveContent = () => {
   const [meta, setMeta] = useState({
       k_ff7: 0, t_ff7: 'low', k_s25: 0, t_s25: 'low',
       accVal: 0, accBase: 0, target: 35, channel: 'standard', status: 'existing',
-      pli: 0
+      pli: 0, ringVol: 0
   });
   const [result, setResult] = useState({ logs: [], grand: 0, spQ: 0, ach: 0 });
   const [samsungIncentive, setSamsungIncentive] = useState({ totalVal: 0, slabInc: 0, totalInc: 0 });
@@ -227,19 +227,28 @@ const IncentiveContent = () => {
 
   const calculateAccessoryPayout = (achieved) => {
       if(!incConfig?.accessories?.items) return 0;
-      // assuming achieved is percentage e.g. 5.5
       let rate = 0;
+      // Find the highest bracket achieved
       for (let item of incConfig.accessories.items) {
           if (achieved >= item.min) {
-              rate = item.rate; // This 'rate' seems to be a flat payout based on achievement?
-              // Or is it rate * something? Based on previous code:
-              // accPct = (meta.accVal/ab)*100;
-              // for(let t of c.accessories.items) { if(accPct>=t.min) { accTot = t.rate; break; } }
-              // So it is a flat amount found in 'rate'.
+              rate = item.rate;
               break;
           }
       }
       return rate;
+  };
+
+  const calculateRingPayout = (count) => {
+      if (!incConfig?.wearables?.ring?.slabs) return 0;
+      let rate = 0;
+      // Slabs are sorted descending by min in DEFAULTS (3, 2, 1)
+      for (let s of incConfig.wearables.ring.slabs) {
+          if (count >= s.min) {
+              rate = s.rate;
+              break;
+          }
+      }
+      return count * rate;
   };
 
   const calculate = () => {
@@ -279,11 +288,15 @@ const IncentiveContent = () => {
 
           // --- Wearables ---
           let wrTot=0; (rows.wr || []).forEach(r => wrTot += (r.qty||0)*r.rate);
-          logs.push({c:"Wearables", n:"", v:wrTot});
+
+          // Add Ring Payout
+          const ringPayout = calculateRingPayout(meta.ringVol || 0);
+          wrTot += ringPayout;
+          if (meta.ringVol > 0) logs.push({c:"Rings", n:`${meta.ringVol} Units`, v:ringPayout});
+
+          logs.push({c:"Wearables", n:"(Incl. Rings)", v:wrTot});
 
           let comb = spFin + wrTot;
-          // let combPot = spRaw + wrTot; // Unused in new calc
-
           if(comb > (c.caps?.global || 75000)) { comb = c.caps.global; logs.push({c:"Global Cap", n:"Max 75k applied", v:0}); }
 
           // --- Care+ ---
@@ -291,17 +304,17 @@ const IncentiveContent = () => {
           (rows.cp || []).forEach(r => { cpQ+=r.qty; cpTot+=(r.qty||0)*r.rate; });
 
           let kickTot = 0;
-          if(c.carePlus?.kickers?.ff7) {
-            if(meta.k_ff7 > 0) kickTot += meta.k_ff7 * (meta.t_ff7==='high' ? (c.carePlus.kickers.ff7.h||0) : (c.carePlus.kickers.ff7.l||0));
+          // FF Series Kicker
+          if(c.carePlus?.kickers?.ffSeries) {
+            if(meta.k_ff7 > 0) kickTot += meta.k_ff7 * (meta.t_ff7==='high' ? (c.carePlus.kickers.ffSeries.h||0) : (c.carePlus.kickers.ffSeries.l||0));
           }
-          if(c.carePlus?.kickers?.s25) {
-            if(meta.k_s25 > 0) kickTot += meta.k_s25 * (meta.t_s25==='high' ? (c.carePlus.kickers.s25.h||0) : (c.carePlus.kickers.s25.l||0));
+          // S Series Kicker
+          if(c.carePlus?.kickers?.sSeries) {
+            if(meta.k_s25 > 0) kickTot += meta.k_s25 * (meta.t_s25==='high' ? (c.carePlus.kickers.sSeries.h||0) : (c.carePlus.kickers.sSeries.l||0));
           }
 
           let cpVol = cpTot;
           if(cpQ>=8) cpVol*=1.2;
-
-          // let cpPot = cpVol + kickTot; // Unused in new calc
 
           if(cpQ>0 && cpQ<3) { cpVol=0; logs.push({c:"Care+", n:"Gate < 3", v:0}); }
 
@@ -325,8 +338,7 @@ const IncentiveContent = () => {
           let accPct = 0;
           if(ab > 0 && meta.channel!=='exclusive' && c.accessories?.items) {
               accPct = (meta.accVal/ab)*100;
-              // We'll trust the helper function for the summation, but for logs we keep this
-              for(let t of c.accessories.items) { if(accPct>=t.min) { accTot = t.rate; break; } }
+              accTot = calculateAccessoryPayout(accPct);
           }
           logs.push({c:"Accessories", n:`Base: ${ab.toFixed(0)} (${accPct.toFixed(1)}%)`, v:accTot});
 
@@ -336,50 +348,20 @@ const IncentiveContent = () => {
           }
 
           const tentPLI = samsungIncentive.slabInc || 0;
+          const pliAdj = meta.pli || 0;
 
-          // --- NEW TOTAL PAYOUT FORMULA ---
-          // Using spRaw (Potential) for smartphonesIncentive as we removed the gate check?
-          // The prompt says "DELETE the < 80% check. Replace it with this summation".
-          // The summation includes `smartphonesIncentive`.
-          // If the user wants to "Unlock the Money", likely they want spPot (Raw) or spFin (which includes volume gate but removed target gate).
-          // Given "Unlock the Money", I'll use spRaw (Potential) as the base variable for `smartphonesIncentive` in this context,
-          // OR, I should use `spFin` which respects volume gates.
-          // However, the prompt says "Replace... with this summation". It doesn't define `smartphonesIncentive`.
-          // I will assume `smartphonesIncentive` = `spFin` (Calculated based on volume gates)
-          // but since I removed the explicit <80% check which wasn't even there in the previous code (I only saw `gateM` logic),
-          // I will ensure `spFin` is used.
-          // Wait, the previous code had: `if(gateM === 0) { missed=true; ... }`.
-          // If I use `spFin`, it will be 0 if volume gate is missed.
-          // The user said "DELETE the < 80% check".
-          // In my previous `read_file`, `calculate` had:
-          // `const ach = meta.target > 0 ? spQ/meta.target : 0;`
-          // `// REMOVED <80% Gate check...` (Wait, did I already remove it in a previous turn or was that my comment?)
-          // Ah, I see "REMOVED <80% Gate check as per request...".
-          // So the prompt effectively wants me to force the Summation Formula.
-
+          // --- TOTAL PAYOUT CALCULATION (SUMMATION) ---
           const totalPayout =
             (Number(tentPLI) || 0) +
-            (Number(spFin) || 0) + // Smartphones Incentive
-            (Number(tbFin) || 0) + // Tablets Incentive
-            (c.wearables?.models?.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0) +
-            (c.carePlus?.slabs?.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0) +
-            (c.notePC?.models?.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0) +
-            (c.bundles?.items?.reduce((acc, curr) => acc + (Number(curr.amount) || 0), 0) || 0) +
-            (c.accessories?.achieved ? (calculateAccessoryPayout(c.accessories.achieved)) : 0);
-
-          // Note: The summation formula uses `c.wearables?.models...`. This sums the CONFIGURATION amounts, not the EARNINGS from sales.
-          // This seems to be a Calculator/Configurator view where the user sets expected payouts per model in the config?
-          // OR, is `models` supposed to be the *Sales Rows*?
-          // The prompt says: `config.wearables?.models?.reduce...`. `config` usually refers to `incConfig`.
-          // If I sum `incConfig.wearables.models[].amount`, I am summing the *rates* defined in settings, not the quantity sold.
-          // BUT, looking at the "Ghost Tabs" request:
-          // `renderContent` -> `case 'WR'` -> maps `config.wearables?.models` and shows inputs for `amount`.
-          // This strongly suggests the user is building a *Projection* or *Calculator* where they enter "I sold X of Model Y" directly into the Config/Calculator inputs?
-          // The inputs in "Ghost Tabs" are: `value={item.amount}`.
-          // If the user inputs `amount` (presumably Total Payout for that model), then the Summation makes sense.
-          // If `amount` is just Rate, then this formula is wrong for a Sales Tracker.
-          // HOWEVER, I MUST FOLLOW THE PROMPT "Apply these LOGIC changes ONLY".
-          // The prompt explicitly gives the summation formula. I will paste it exactly.
+            (Number(pliAdj) || 0) +
+            (Number(spFin) || 0) +
+            (Number(tbFin) || 0) +
+            (Number(wrTot) || 0) +
+            (Number(cpFinal) || 0) +
+            (Number(npcFin) || 0) +
+            (Number(bunFin) || 0) +
+            (Number(accTot) || 0) +
+            (Number(c.misc?.amount) || 0);
 
           setResult({ logs, grand: totalPayout, spQ, ach: (ach*100).toFixed(0) });
       } catch (error) {
@@ -436,41 +418,36 @@ const IncentiveContent = () => {
       try {
         const newConfig = JSON.parse(JSON.stringify(incConfig));
 
-        // Handle direct path like 'wearables' (which implies 'wearables.models' based on new schema)
-        // or composite paths.
-        // The Prompt's usage: updateConfig('wearables', index, 'name', val)
-        // My helper expects: updateConfig(fullPath, val) usually.
-        // I need to adapt the helper or calls.
-
-        // Let's rewrite updateConfig to be robust or create a specific one for the new UI.
-        // The prompt uses: `updateConfig('wearables', index, 'name', e.target.value)`
-
         let targetArray = null;
         if (path === 'wearables') targetArray = newConfig.wearables.models;
         else if (path === 'carePlus') targetArray = newConfig.carePlus.slabs;
         else if (path === 'notePC') targetArray = newConfig.notePC.models;
-        else if (path === 'bundles') targetArray = newConfig.bundles.items; // Bundles still items?
+        else if (path === 'bundles') targetArray = newConfig.bundles.items;
         else if (path === 'accessories') targetArray = newConfig.accessories.items;
-        else {
-            // Fallback for deeply nested or other paths
-             // Not handling 'sp'/'tb' here as they use different UI in this refactor?
-        }
 
         if (targetArray && targetArray[index]) {
-            targetArray[index][field] = (field === 'amount' || field === 'rate') ? parseFloat(val) || 0 : val;
+            targetArray[index][field] = (field === 'amount' || field === 'rate' || field === 'min') ? parseFloat(val) || 0 : val;
             setIncConfig(newConfig);
-        } else {
-             // Fallback to legacy updateConfig if arguments don't match
-             // But here I'm replacing the function logic
         }
       } catch(e) { console.error(e); }
   };
 
-  // Legacy support for SP/TB which might call updateConfig differently?
-  // The existing `updateConfig` took `(path, val)`.
-  // I need to support BOTH signatures or refactor SP/TB to use the new one.
-  // SP/TB Code in this file calls: `updateConfig('sp.slabs.0.min', val)`.
-  // So I need a wrapper.
+  const updateConfigObject = (path, field, val) => {
+      try {
+        const newConfig = JSON.parse(JSON.stringify(incConfig));
+        // Simple dot notation traversal could be complex, sticking to specific cases or deep clone modification
+        // For Kickers: path = 'carePlus.kickers.ffSeries'
+        const parts = path.split('.');
+        let obj = newConfig;
+        for (let i = 0; i < parts.length; i++) {
+             obj = obj[parts[i]];
+        }
+        if (obj) {
+            obj[field] = parseFloat(val) || 0;
+            setIncConfig(newConfig);
+        }
+      } catch (e) { console.error(e); }
+  };
 
   const updateConfigLegacy = (path, val) => {
       try {
@@ -495,12 +472,9 @@ const IncentiveContent = () => {
       else if (key === 'notePC') newConfig.notePC.models.push(template);
       else if (key === 'bundles') newConfig.bundles.items.push(template);
 
-      // SP/TB legacy calls might differ
-
       setIncConfig(newConfig);
   };
 
-  // Legacy Add/Remove for SP/TB
   const addConfigItemLegacy = (path, template) => {
       try {
         const newConfig = JSON.parse(JSON.stringify(incConfig));
@@ -531,7 +505,6 @@ const IncentiveContent = () => {
         }
       } catch(e) { console.error(e); }
   };
-
 
   const ConfigSection = () => {
     // Helper Renderers for Legacy components (SP/TB)
@@ -602,9 +575,10 @@ const IncentiveContent = () => {
       switch (activeTab) {
         case 'SP': return renderSmartphoneConfig();
         case 'TB': return renderTabletConfig();
-        case 'WR': // Wearables
+        case 'WR':
           return (
             <div className="space-y-4">
+                <h4 className="font-bold text-sm text-blue-600">Model Rates</h4>
                 {(incConfig.wearables?.models || []).map((item, index) => (
                   <div key={index} className="flex gap-2">
                     <input placeholder="Model" value={item.name} onChange={(e) => updateConfig('wearables', index, 'name', e.target.value)} className="flex-1 p-2 border rounded text-xs" />
@@ -614,9 +588,10 @@ const IncentiveContent = () => {
                 <button onClick={() => addConfigItem('wearables')} className="text-xs bg-slate-100 dark:bg-slate-700 p-2 rounded flex items-center gap-1">+ Add</button>
             </div>
           );
-        case 'CP': // Care+
+        case 'CP':
           return (
              <div className="space-y-4">
+                <h4 className="font-bold text-sm text-blue-600">Slabs</h4>
                 {(incConfig.carePlus?.slabs || []).map((item, index) => (
                   <div key={index} className="flex gap-2">
                     <input placeholder="Slab" value={item.name} onChange={(e) => updateConfig('carePlus', index, 'name', e.target.value)} className="flex-1 p-2 border rounded text-xs" />
@@ -624,9 +599,35 @@ const IncentiveContent = () => {
                   </div>
                 ))}
                 <button onClick={() => addConfigItem('carePlus')} className="text-xs bg-slate-100 dark:bg-slate-700 p-2 rounded flex items-center gap-1">+ Add</button>
+
+                <h4 className="font-bold text-sm text-blue-600 mt-4">Kickers</h4>
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="p-2 border rounded dark:border-slate-600">
+                        <label className="text-xs font-bold block mb-2">FF SERIES</label>
+                        <div className="flex gap-2 mb-2">
+                            <span className="text-xs w-8 py-2">Low</span>
+                            <input type="number" value={incConfig.carePlus?.kickers?.ffSeries?.l} onChange={(e) => updateConfigObject('carePlus.kickers.ffSeries', 'l', e.target.value)} className="w-full p-2 border rounded text-xs" />
+                        </div>
+                        <div className="flex gap-2">
+                            <span className="text-xs w-8 py-2">High</span>
+                            <input type="number" value={incConfig.carePlus?.kickers?.ffSeries?.h} onChange={(e) => updateConfigObject('carePlus.kickers.ffSeries', 'h', e.target.value)} className="w-full p-2 border rounded text-xs" />
+                        </div>
+                    </div>
+                    <div className="p-2 border rounded dark:border-slate-600">
+                        <label className="text-xs font-bold block mb-2">S SERIES</label>
+                        <div className="flex gap-2 mb-2">
+                            <span className="text-xs w-8 py-2">Low</span>
+                            <input type="number" value={incConfig.carePlus?.kickers?.sSeries?.l} onChange={(e) => updateConfigObject('carePlus.kickers.sSeries', 'l', e.target.value)} className="w-full p-2 border rounded text-xs" />
+                        </div>
+                        <div className="flex gap-2">
+                            <span className="text-xs w-8 py-2">High</span>
+                            <input type="number" value={incConfig.carePlus?.kickers?.sSeries?.h} onChange={(e) => updateConfigObject('carePlus.kickers.sSeries', 'h', e.target.value)} className="w-full p-2 border rounded text-xs" />
+                        </div>
+                    </div>
+                </div>
              </div>
           );
-        case 'NPC': // Note PC
+        case 'NPC':
           return (
              <div className="space-y-4">
                 {(incConfig.notePC?.models || []).map((item, index) => (
@@ -638,7 +639,7 @@ const IncentiveContent = () => {
                 <button onClick={() => addConfigItem('notePC')} className="text-xs bg-slate-100 dark:bg-slate-700 p-2 rounded flex items-center gap-1">+ Add</button>
              </div>
           );
-        case 'Bun': // Bundles
+        case 'Bun':
           return (
              <div className="space-y-4">
                 {(incConfig.bundles?.items || []).map((item, index) => (
@@ -650,27 +651,19 @@ const IncentiveContent = () => {
                 <button onClick={() => addConfigItem('bundles')} className="text-xs bg-slate-100 dark:bg-slate-700 p-2 rounded flex items-center gap-1">+ Add</button>
              </div>
           );
-        case 'Acc': // Accessories (Preserve existing or adapt?)
-            // Snippet says "IMPLEMENT cases for... Acc similarly"
-            // But previous Acc UI had slab based percentages.
-            // If I look at the new summation formula: `config.accessories?.achieved`
-            // It seems accessories is now just a single "Achieved" input?
-            // "calculateAccessoryPayout(config.accessories.achieved)"
-            // I'll stick to the "Ghost Tabs" pattern for simplicity but Accessories might need special handling.
-            // Let's keep it simple: List of items?
-            // Wait, calculateAccessoryPayout iterates `config.accessories.items`.
-            // So we still need to configure items (min%, rate/amount).
-            // Let's use the new UI pattern for consistency.
+        case 'Acc':
             return (
                  <div className="space-y-4">
+                    <div className="flex justify-between text-xs font-bold text-slate-400 px-1">
+                        <span>Min Ach%</span>
+                        <span>Payout</span>
+                    </div>
                     {(incConfig.accessories?.items || []).map((item, index) => (
                       <div key={index} className="flex gap-2">
                         <input placeholder="Min %" type="number" value={item.min} onChange={(e) => updateConfig('accessories', index, 'min', e.target.value)} className="w-1/2 p-2 border rounded text-xs" />
                         <input placeholder="Payout" type="number" value={item.rate} onChange={(e) => updateConfig('accessories', index, 'rate', e.target.value)} className="w-1/2 p-2 border rounded text-xs" />
                       </div>
                     ))}
-                    {/* Note: 'rate' is used in accessory loop in calc, so we keep 'rate' or map 'amount' -> 'rate' */}
-                    {/* The updateConfig helper I wrote maps 'amount' OR 'rate' to float. */}
                  </div>
             );
         default: return null;
@@ -755,12 +748,6 @@ const IncentiveContent = () => {
              </div>
         </div>
 
-        {/* Note: I'm leaving the 'rows' UI below for calculating quantities/earnings per category.
-            The user only asked to fix Config and Payout Logic.
-            The Payout Logic now sums the CONFIG amounts directly (strange for a tracker, but requested).
-            The Rows below populate 'spFin', 'tbFin', etc. which are used in the Payout Logic summation.
-        */}
-
         {/* Smartphones */}
         <div className="bg-white dark:bg-slate-800 rounded-xl border-l-4 border-l-blue-600 shadow-sm p-3">
              <div className="flex justify-between items-center mb-2">
@@ -798,9 +785,6 @@ const IncentiveContent = () => {
              ))}
         </div>
 
-        {/* Other Sections (Rows UI) maintained as they feed into the logic... */}
-        {/* (Truncated for brevity, but I must write the whole file) */}
-
         {/* Wearables */}
         <div className="bg-white dark:bg-slate-800 rounded-xl border-l-4 border-l-pink-500 shadow-sm p-3">
              <div className="flex justify-between items-center mb-2">
@@ -817,6 +801,13 @@ const IncentiveContent = () => {
                      <button onClick={() => delRow('wr', i)} className="text-red-400"><Trash2 size={14}/></button>
                  </div>
              ))}
+             <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700">
+                 <label className="text-xs text-slate-400 font-bold">Galaxy Ring (Units)</label>
+                 <div className="flex justify-between items-center">
+                    <input type="number" value={meta.ringVol} onChange={(e)=>setMeta({...meta, ringVol: parseInt(e.target.value)||0})} className="w-24 p-2 border rounded text-sm font-bold dark:bg-slate-900 dark:text-white" />
+                    <span className="text-emerald-600 text-xs font-bold">Payout: ₹{calculateRingPayout(meta.ringVol).toLocaleString()}</span>
+                 </div>
+             </div>
         </div>
 
         {/* Care+ */}
@@ -835,6 +826,32 @@ const IncentiveContent = () => {
                      <button onClick={() => delRow('cp', i)} className="text-red-400"><Trash2 size={14}/></button>
                  </div>
              ))}
+
+             {/* Kicker Inputs */}
+             <div className="mt-2 grid grid-cols-2 gap-2">
+                 <div className="bg-slate-50 dark:bg-slate-900 p-2 rounded">
+                     <label className="text-[10px] font-bold text-slate-500 block mb-1">FF SERIES</label>
+                     <div className="flex items-center gap-1 mb-1">
+                         <input type="number" placeholder="Qty" value={meta.k_ff7} onChange={(e)=>setMeta({...meta, k_ff7: parseInt(e.target.value)||0})} className="w-10 text-xs p-1 rounded border"/>
+                         <span className="text-[10px] text-slate-400">Qty</span>
+                     </div>
+                     <select value={meta.t_ff7} onChange={(e)=>setMeta({...meta, t_ff7: e.target.value})} className="w-full text-[10px] p-1 rounded border">
+                         <option value="low">Low</option>
+                         <option value="high">High</option>
+                     </select>
+                 </div>
+                 <div className="bg-slate-50 dark:bg-slate-900 p-2 rounded">
+                     <label className="text-[10px] font-bold text-slate-500 block mb-1">S SERIES</label>
+                     <div className="flex items-center gap-1 mb-1">
+                         <input type="number" placeholder="Qty" value={meta.k_s25} onChange={(e)=>setMeta({...meta, k_s25: parseInt(e.target.value)||0})} className="w-10 text-xs p-1 rounded border"/>
+                         <span className="text-[10px] text-slate-400">Qty</span>
+                     </div>
+                     <select value={meta.t_s25} onChange={(e)=>setMeta({...meta, t_s25: e.target.value})} className="w-full text-[10px] p-1 rounded border">
+                         <option value="low">Low</option>
+                         <option value="high">High</option>
+                     </select>
+                 </div>
+             </div>
         </div>
 
         {/* Note PC */}
@@ -887,7 +904,7 @@ const IncentiveContent = () => {
                      <span>Base Target: {meta.accBase || ((rows.sp||[]).reduce((a,c)=>a+(c.qty* (c.fm?(incConfig.sp?.fm_mult||2):1)*25),0) || 0)}</span>
                      <span className="text-emerald-600 font-bold">Payout: ₹{Math.floor(result.logs.find(l=>l.c==='Accessories')?.v || 0)}</span>
                  </div>
-                 <div className="mt-2 pt-2 border-t border-slate-100">
+                 <div className="mt-2 pt-2 border-t border-slate-100 dark:border-slate-700">
                      <label className="text-xs text-slate-400">Misc. Incentive / Adjustment</label>
                      <input type="number" value={incConfig.misc?.amount || 0} onChange={(e)=>updateConfig('misc.amount', 0, 'amount', e.target.value)} className="w-full p-2 border rounded text-sm font-bold dark:bg-slate-900 dark:text-white" />
                  </div>

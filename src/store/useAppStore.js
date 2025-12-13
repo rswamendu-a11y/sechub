@@ -4,8 +4,33 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 const INCENTIVE_DEFAULTS = {
     sp: { slabs: [{min: 100000, rate: 700, label: ">= 100k"}, {min: 70000, rate: 600, label: "70k - 100k"}, {min: 40000, rate: 500, label: "40k - 70k"}, {min: 30000, rate: 300, label: "30k - 40k"}, {min: 20000, rate: 200, label: "20k - 30k"}, {min: 15000, rate: 100, label: "15k - 20k"}, {min: 10000, rate: 75, label: "10k - 15k"}, {min: 0, rate: 25, label: "< 10k"}], gates: { std: [{min: 40, p: 1.0}, {min: 35, p: 0.75}, {min: 30, p: 0.6}], sis: [{min: 40, p: 1.0}, {min: 35, p: 1.0}, {min: 30, p: 0.75}, {min: 25, p: 0.5}] }, fm_mult: 0.5, target_thresh: 0.8 },
     tb: { slabs: [{min:70000,rate:800,label:">= 70k"},{min:40000,rate:600,label:"40k - 70k"},{min:30000,rate:500,label:"30k - 40k"},{min:20000,rate:300,label:"20k - 30k"},{min:15000,rate:200,label:"15k - 20k"},{min:10000,rate:100,label:"10k - 15k"}], focus: [{name:"S11 Ultra", rate:1500, keys:"s11 ultra"},{name:"S11/S10+/FE+", rate:1000, keys:"s11,s10+,fe+"},{name:"S10 Lite", rate:750, keys:"s10 lite"},{name:"A11 Plus", rate:400, keys:"a11"}] },
-    wearables: { models: [{name:"Watch Ultra / 8 Cls / 8", amount:1200, keys:"ultra,classic,watch8,watch 8"},{name:"Other Watches", amount:800, keys:"watch"},{name:"Buds3 Pro", amount:600, keys:"buds3 pro"},{name:"Buds3 / FE", amount:500, keys:"buds3,buds fe"},{name:"Other Buds", amount:400, keys:"buds"},{name:"Galaxy Ring", amount:0, keys:"ring"}], slabs: [] },
-    carePlus: { slabs: [{name:"> 1L", amount:400, min:100000},{name:"70k - 1L", amount:350, min:70000},{name:"40k - 70k", amount:300, min:40000},{name:"30k - 40k", amount:200, min:30000},{name:"20k - 30k", amount:120, min:20000},{name:"10k - 20k", amount:100, min:10000},{name:"< 10k", amount:50, min:0}], kickers: { ff7:{l:400,h:600}, s25:{l:300,h:500} } },
+    wearables: {
+        models: [
+            {name:"Watch Ultra / 8 Classic", amount:1200, keys:"ultra,classic"},
+            {name:"Watch 8", amount:800, keys:"watch 8"},
+            {name:"Other Watches", amount:500, keys:"watch"},
+            {name:"Buds3 Pro", amount:600, keys:"buds3 pro"},
+            {name:"Buds3 / FE", amount:500, keys:"buds3,buds fe"},
+            {name:"Buds Core", amount:400, keys:"core"},
+            {name:"Other Buds", amount:200, keys:"buds"}
+        ],
+        ring: { slabs: [{min:3, rate:5000}, {min:2, rate:4000}, {min:1, rate:3000}] }
+    },
+    carePlus: {
+        slabs: [
+            {name:"> 1L", amount:400, min:100000},
+            {name:"70k - 1L", amount:350, min:70000},
+            {name:"40k - 70k", amount:300, min:40000},
+            {name:"30k - 40k", amount:200, min:30000},
+            {name:"20k - 30k", amount:120, min:20000},
+            {name:"10k - 20k", amount:100, min:10000},
+            {name:"< 10k", amount:50, min:0}
+        ],
+        kickers: {
+            ffSeries:{l:400, h:600},
+            sSeries:{l:300, h:500}
+        }
+    },
     notePC: { models: [{name:"GB5 Pro / 360", amount:3000}, {name:"GB5 360 / GB4 Pro", amount:2500}, {name:"GB5 / GB3 360", amount:1750}, {name:"GB4 Edge / Go", amount:1250}, {name:"Other", amount:1000}], slabs: [] },
     bundles: { items: [{name:"Wr+Hr", amount:750}, {name:"Wearable", amount:400}, {name:"Hearable", amount:250}, {name:"Wr+Hr+Acc", amount:1000}, {name:"Acc", amount:100}], slabs: [] },
     accessories: { items: [{min:4, rate:3000}, {min:3, rate:2000}, {min:2, rate:1000}, {min:1, rate:500}], achieved: 0 },
